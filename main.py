@@ -77,11 +77,19 @@ def show_lobby(screen, audio_manager, network_client, room_name, is_host):
 
             result = lobby.handle_event(event)
             if result == "START":
+                # Host is starting the game - broadcast to all players
+                if is_host and network_client:
+                    network_client.send_start_game()
                 return "START"
             elif result == "CANCEL" or result == "LEAVE":
                 return "CANCEL"
 
-        lobby.update(dt)
+        # Check for updates from lobby (including game start signal for guests)
+        result = lobby.update(dt)
+        if result == "START":
+            # Guest received start signal from host
+            return "START"
+
         lobby.draw()
 
         # Draw audio button

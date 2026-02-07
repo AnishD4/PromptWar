@@ -48,12 +48,16 @@ class GameServer:
 
     def _handle_client(self, conn, addr):
         """Handle individual client connection."""
-        conn.settimeout(30.0)  # Increase timeout to 30 seconds for lobby waiting
+        conn.settimeout(None)  # Remove timeout - use non-blocking with select or keep connection alive
         try:
             while self.running:
                 try:
+                    # Set a short timeout just for recv to allow checking self.running
+                    conn.settimeout(1.0)
                     data = conn.recv(4096)
+
                     if not data:
+                        print(f"Client {addr} disconnected")
                         break
 
                     message = pickle.loads(data)
@@ -62,11 +66,16 @@ class GameServer:
                     if response:
                         conn.send(pickle.dumps(response))
                 except socket.timeout:
-                    # Just continue - client may be idle in lobby
+                    # This is normal - just means no data received in 1 second
+                    # Continue loop to check if server is still running
                     continue
+                except Exception as e:
+                    print(f"Error processing message from {addr}: {e}")
+                    break
         except Exception as e:
-            print(f"Client error: {e}")
+            print(f"Client handler error for {addr}: {e}")
         finally:
+            print(f"Closing connection to {addr}")
             conn.close()
 
     def _process_message(self, message, conn):
@@ -117,6 +126,22 @@ class GameServer:
                     'player_count': len(self.rooms[room_code]['players'])
                 }
             return {'status': 'error', 'message': 'Room not found'}
+
+        elif msg_type == 'start_game':
+            # Host is starting the game - broadcast to all players in room
+            room_code = message['room_code']
+            if room_code in self.rooms:
+                for player_conn in self.rooms[room_code]['players']:
+                    if player_conn != conn:  # Don't send to host
+                        try:
+                            start_msg = {
+                                'type': 'game_starting',
+                                'room_code': room_code
+                            }
+                            player_conn.send(pickle.dumps(start_msg))
+                        except:
+                            pass
+                return {'status': 'ok'}
 
         elif msg_type == 'update':
             room_code = message['room_code']
@@ -272,6 +297,18 @@ class GameClient:
         except Exception as e:
             print(f"Send error: {e}")
 
+    def send_start_game(self):
+        """Send message that the game is starting."""
+        try:
+            message = {
+                'type': 'start_game',
+                'room_code': self.room_code
+            }
+            self.client_socket.send(pickle.dumps(message))
+            print("✓ Sent start game signal to server")
+        except Exception as e:
+            print(f"Start game error: {e}")
+
     def _receive_messages(self):
         """Receive messages from server."""
         self.client_socket.settimeout(1.0)  # Use timeout in receive loop
@@ -290,6 +327,11 @@ class GameClient:
                         self.lobby_players = message.get('players', [])
                         if self.on_player_joined:
                             self.on_player_joined(message.get('new_player'))
+                    elif msg_type == 'game_starting':
+                        # Host is starting the game - set flag
+                        print("✓ Host is starting the game!")
+                        with self.response_lock:
+                            self.pending_response = {'type': 'game_starting', 'status': 'start'}
                     else:
                         # Store response for pending requests
                         with self.response_lock:

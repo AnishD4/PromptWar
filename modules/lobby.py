@@ -33,6 +33,16 @@ class LobbyScreen:
         self.error_message = ""
         self.error_timer = 0
 
+        # Success notification for when you join
+        self.success_message = ""
+        self.success_timer = 0
+
+        # Show success message when joining as guest
+        if not is_host and network_client.lobby_players:
+            host_name = network_client.lobby_players[0] if len(network_client.lobby_players) > 0 else "Host"
+            self.success_message = f"Successfully joined {host_name}'s lobby!"
+            self.success_timer = 3.0
+
         # Create buttons with clean positioning
         center_x = SCREEN_WIDTH // 2
         button_y = SCREEN_HEIGHT - 120
@@ -74,11 +84,25 @@ class LobbyScreen:
                 except:
                     pass
 
+        # Check if host started the game (for guests)
+        if not self.is_host and self.network_client:
+            with self.network_client.response_lock:
+                if self.network_client.pending_response and \
+                   self.network_client.pending_response.get('type') == 'game_starting':
+                    self.network_client.pending_response = None
+                    return "START"  # Signal that game is starting
+
         # Update error timer
         if self.error_timer > 0:
             self.error_timer -= dt
             if self.error_timer <= 0:
                 self.error_message = ""
+
+        # Update success timer
+        if self.success_timer > 0:
+            self.success_timer -= dt
+            if self.success_timer <= 0:
+                self.success_message = ""
 
         # Update buttons
         mouse_pos = pygame.mouse.get_pos()
@@ -91,6 +115,12 @@ class LobbyScreen:
 
     def handle_event(self, event):
         """Handle lobby events."""
+        # Dismiss success message on click
+        if event.type == pygame.MOUSEBUTTONDOWN and self.success_timer > 0:
+            self.success_timer = 0
+            self.success_message = ""
+            return None
+
         if self.is_host:
             if self.start_button.is_clicked(event):
                 if self.can_start_game():
@@ -258,6 +288,10 @@ class LobbyScreen:
         if self.error_message and self.error_timer > 0:
             self._draw_error_popup()
 
+        # Draw success message if active
+        if self.success_message and self.success_timer > 0:
+            self._draw_success_message()
+
     def _draw_error_popup(self):
         """Draw minimal error popup."""
         # Semi-transparent overlay
@@ -292,6 +326,37 @@ class LobbyScreen:
         # Dismiss hint
         hint_surf = self.small_font.render("Click anywhere to dismiss", True, (150, 150, 150))
         hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, card_y + 115))
+        self.screen.blit(hint_surf, hint_rect)
+
+    def _draw_success_message(self):
+        """Draw success message when joining."""
+        # Semi-transparent overlay
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        self.screen.blit(overlay, (0, 0))
+
+        # Success card
+        card_width = 500
+        card_height = 100
+        card_x = SCREEN_WIDTH // 2 - card_width // 2
+        card_y = SCREEN_HEIGHT // 2 - card_height // 2
+
+        # Card background
+        pygame.draw.rect(self.screen, (20, 40, 20),
+                        (card_x, card_y, card_width, card_height),
+                        border_radius=12)
+        pygame.draw.rect(self.screen, self.green,
+                        (card_x, card_y, card_width, card_height),
+                        3, border_radius=12)
+
+        # Success message
+        msg_surf = self.small_font.render(self.success_message, True, self.white)
+        msg_rect = msg_surf.get_rect(center=(SCREEN_WIDTH // 2, card_y + 35))
+        self.screen.blit(msg_surf, msg_rect)
+
+        # Dismiss hint
+        hint_surf = self.small_font.render("Click anywhere to dismiss", True, (150, 150, 150))
+        hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, card_y + 65))
         self.screen.blit(hint_surf, hint_rect)
 
 
