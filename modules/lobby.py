@@ -124,6 +124,9 @@ class LobbyScreen:
         if self.is_host:
             if self.start_button.is_clicked(event):
                 if self.can_start_game():
+                    # Send start game signal to server
+                    print("✓ Host sending start game signal...")
+                    self.network_client.send_start_game()
                     return "START"
                 else:
                     self.show_error("Need at least 2 players to start")

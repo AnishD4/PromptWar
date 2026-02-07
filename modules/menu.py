@@ -161,12 +161,13 @@ class MenuScreen:
         """Initialize join room screen elements."""
         center_x = SCREEN_WIDTH // 2
         
-        # Add IP address input with better spacing
-        self.server_ip_input = TextInput(center_x - 200, 280, 400, 50, ">>> SERVER IP <<<")
-        self.room_code_input = TextInput(center_x - 200, 380, 400, 50, ">>> ROOM CODE <<<")
+        # Properly aligned with labels - label at 170, input at 200 (30px gap)
+        self.server_ip_input = TextInput(center_x - 200, 200, 400, 50, ">>> SERVER IP <<<")
+        # Label at 290, input at 320 (30px gap)
+        self.room_code_input = TextInput(center_x - 200, 320, 400, 50, ">>> ROOM CODE <<<")
         self.join_buttons = [
-            Button(center_x - 150, 480, 300, 60, "JOIN", self.magenta),
-            Button(center_x - 150, 560, 300, 60, "BACK", self.yellow),
+            Button(center_x - 150, 440, 300, 60, "JOIN", self.magenta),
+            Button(center_x - 150, 520, 300, 60, "BACK", self.yellow),
         ]
     
     def update(self, dt):
@@ -313,31 +314,32 @@ class MenuScreen:
 
     def _draw_join_room_screen(self):
         """Draw join room screen with clean layout."""
+        # Title at top
         title = self.title_font.render("JOIN ROOM", True, self.magenta)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 80))
         self.screen.blit(title, title_rect)
         
-        # Server IP section
+        # Server IP section - label positioned above input box
         instruction1 = self.small_font.render("HOST'S IP ADDRESS", True, self.yellow)
-        inst1_rect = instruction1.get_rect(center=(SCREEN_WIDTH // 2, 190))
+        inst1_rect = instruction1.get_rect(center=(SCREEN_WIDTH // 2, 170))
         self.screen.blit(instruction1, inst1_rect)
 
         self.server_ip_input.draw(self.screen, self.font)
 
-        # Room code section
+        # Room code section - label positioned above input box
         instruction2 = self.small_font.render("ROOM CODE", True, self.yellow)
-        inst2_rect = instruction2.get_rect(center=(SCREEN_WIDTH // 2, 300))
+        inst2_rect = instruction2.get_rect(center=(SCREEN_WIDTH // 2, 290))
         self.screen.blit(instruction2, inst2_rect)
 
         self.room_code_input.draw(self.screen, self.font)
         
-        # Buttons
+        # Buttons with proper spacing
         for button in self.join_buttons:
             button.draw(self.screen, self.font)
 
-        # Bottom hint
+        # Bottom hint - properly positioned at bottom
         hint = self.small_font.render("Ask the host for their IP address and room code", True, (150, 150, 150))
-        hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 640))
+        hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 40))
         self.screen.blit(hint, hint_rect)
 
     def _draw_scan_lines(self):

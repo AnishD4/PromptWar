@@ -240,12 +240,8 @@ class GameClient:
     def join_room(self, room_code, player_name='Player'):
         """Join an existing room."""
         try:
-            # Set room_code BEFORE sending the request so response tagging works correctly
-            self.room_code = room_code
-
             message = {'type': 'join_room', 'room_code': room_code, 'player_name': player_name}
             print(f"Sending join_room request for: {room_code}")
-            print(f"[DEBUG] self.room_code set to: {self.room_code}")
             self.client_socket.send(pickle.dumps(message))
 
             # Wait for response with timeout
@@ -253,31 +249,25 @@ class GameClient:
             start_time = time.time()
             while time.time() - start_time < 5.0:  # 5 second timeout
                 with self.response_lock:
-                    print(f"[DEBUG] Checking pending_response: {self.pending_response}")
                     if self.pending_response and self.pending_response.get('type') == 'join_room_response':
                         response = self.pending_response
                         self.pending_response = None
 
                         if response['status'] == 'success':
                             self.player_id = response['player_id']
-                            # room_code already set above
+                            self.room_code = response['room_code']
                             self.lobby_players = response.get('players', [])
                             print(f"✓ Joined room: {room_code}, Player ID: {self.player_id}")
-                            print(f"✓ Lobby players: {self.lobby_players}")
                             return True
                         else:
                             print(f"✗ {response.get('message', 'Failed to join')}")
-                            self.room_code = None  # Reset on failure
                             return False
                 time.sleep(0.05)  # Small delay to prevent busy waiting
 
             print("✗ Timeout waiting for join_room response")
-            print(f"[DEBUG] Final pending_response state: {self.pending_response}")
-            self.room_code = None  # Reset on timeout
             return False
         except Exception as e:
             print(f"✗ Join room error: {e}")
-            self.room_code = None
             return False
 
     def get_lobby_info(self):
@@ -329,15 +319,12 @@ class GameClient:
                     message = pickle.loads(data)
                     msg_type = message.get('type')
 
-                    print(f"[DEBUG] Received message: {msg_type}, keys: {list(message.keys())}")
-
                     if msg_type == 'update':
                         # Update game state with received data
                         self.game_state = message.get('data', {})
                     elif msg_type == 'player_joined':
                         # Update lobby players list
                         self.lobby_players = message.get('players', [])
-                        print(f"[DEBUG] Updated lobby players: {self.lobby_players}")
                         if self.on_player_joined:
                             self.on_player_joined(message.get('new_player'))
                     elif msg_type == 'game_starting':
@@ -352,28 +339,19 @@ class GameClient:
                             if message.get('status') == 'success' and 'player_count' in message:
                                 # Update lobby players from get_lobby response
                                 self.lobby_players = message.get('players', [])
-                                print(f"[DEBUG] Lobby info updated: {self.lobby_players}")
 
                             # Tag the response type for easier matching
                             if message.get('status') in ['success', 'error']:
-                                print(f"[DEBUG] Processing status response: {message.get('status')}")
                                 # This is a response to a request
-
+                                self.pending_response = message
                                 # Infer response type from context
-                                if 'player_id' in message and 'room_code' in message:
-                                    # This is either create_room or join_room response
+                                if 'player_id' in message:
                                     if self.room_code is None:
                                         message['type'] = 'create_room_response'
-                                        print("[DEBUG] Tagged as create_room_response")
                                     else:
                                         message['type'] = 'join_room_response'
-                                        print("[DEBUG] Tagged as join_room_response")
                                 elif 'player_count' in message:
                                     message['type'] = 'get_lobby_response'
-                                    print("[DEBUG] Tagged as get_lobby_response")
-
-                                self.pending_response = message
-                                print(f"[DEBUG] Set pending_response with type: {message.get('type')}")
                 else:
                     break
             except socket.timeout:
