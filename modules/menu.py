@@ -312,28 +312,32 @@ class MenuScreen:
         self.screen.blit(hint, hint_rect)
 
     def _draw_join_room_screen(self):
-        """Draw join room screen."""
+        """Draw join room screen with clean layout."""
         title = self.title_font.render("JOIN ROOM", True, self.magenta)
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 120))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
         self.screen.blit(title, title_rect)
         
-        instruction1 = self.small_font.render("ENTER HOST'S IP ADDRESS", True, self.yellow)
-        inst1_rect = instruction1.get_rect(center=(SCREEN_WIDTH // 2, 210))
+        # Server IP section
+        instruction1 = self.small_font.render("HOST'S IP ADDRESS", True, self.yellow)
+        inst1_rect = instruction1.get_rect(center=(SCREEN_WIDTH // 2, 190))
         self.screen.blit(instruction1, inst1_rect)
 
         self.server_ip_input.draw(self.screen, self.font)
 
-        instruction2 = self.small_font.render("ENTER ROOM CODE", True, self.yellow)
-        inst2_rect = instruction2.get_rect(center=(SCREEN_WIDTH // 2, 315))
+        # Room code section
+        instruction2 = self.small_font.render("ROOM CODE", True, self.yellow)
+        inst2_rect = instruction2.get_rect(center=(SCREEN_WIDTH // 2, 300))
         self.screen.blit(instruction2, inst2_rect)
 
         self.room_code_input.draw(self.screen, self.font)
         
+        # Buttons
         for button in self.join_buttons:
             button.draw(self.screen, self.font)
 
-        hint = self.small_font.render("Ask the host for their IP and room name!", True, (150, 150, 150))
-        hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 600))
+        # Bottom hint
+        hint = self.small_font.render("Ask the host for their IP address and room code", True, (150, 150, 150))
+        hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 640))
         self.screen.blit(hint, hint_rect)
 
     def _draw_scan_lines(self):
