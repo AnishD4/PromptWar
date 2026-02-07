@@ -60,6 +60,12 @@ class Player:
         self.hit_flash_timer = 0
         self.anim_timer = 0
 
+        # Initialize sprite - create a default colored rectangle
+        self.sprite = pygame.Surface((PLAYER_WIDTH, PLAYER_HEIGHT))
+        self.sprite.fill(color)
+        # Add a border for better visibility
+        pygame.draw.rect(self.sprite, (255, 255, 255), self.sprite.get_rect(), 2)
+
         # AI-generated content (set by main.py after prompt input)
         self.character_prompt = "warrior"
         self.weapon_prompt = "sword"

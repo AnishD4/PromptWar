@@ -48,20 +48,22 @@ class GameServer:
 
     def _handle_client(self, conn, addr):
         """Handle individual client connection."""
-        conn.settimeout(5.0)  # Set timeout for client connections
+        conn.settimeout(30.0)  # Increase timeout to 30 seconds for lobby waiting
         try:
             while self.running:
-                data = conn.recv(4096)
-                if not data:
-                    break
+                try:
+                    data = conn.recv(4096)
+                    if not data:
+                        break
 
-                message = pickle.loads(data)
-                response = self._process_message(message, conn)
+                    message = pickle.loads(data)
+                    response = self._process_message(message, conn)
 
-                if response:
-                    conn.send(pickle.dumps(response))
-        except socket.timeout:
-            print(f"Client {addr} timed out")
+                    if response:
+                        conn.send(pickle.dumps(response))
+                except socket.timeout:
+                    # Just continue - client may be idle in lobby
+                    continue
         except Exception as e:
             print(f"Client error: {e}")
         finally:
