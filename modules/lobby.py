@@ -84,12 +84,12 @@ class LobbyScreen:
                 except:
                     pass
 
-        # Check if host started the game (for guests)
-        if not self.is_host and self.network_client:
+        # Check if game is starting (for ALL players) using the separate flag
+        if self.network_client:
             with self.network_client.response_lock:
-                if self.network_client.pending_response and \
-                   self.network_client.pending_response.get('type') == 'game_starting':
-                    self.network_client.pending_response = None
+                if self.network_client.game_starting:
+                    self.network_client.game_starting = False  # Reset the flag
+                    print("✓ Game is starting - transitioning to game!")
                     return "START"  # Signal that game is starting
 
         # Update error timer

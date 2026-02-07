@@ -187,6 +187,7 @@ class GameClient:
         self.on_player_joined = None  # Callback for when player joins
         self.response_lock = threading.Lock()
         self.pending_response = None
+        self.game_starting = False  # Separate flag for game start signal
 
     def connect(self, host):
         """Connect to server."""
@@ -335,10 +336,10 @@ class GameClient:
                         if self.on_player_joined:
                             self.on_player_joined(message.get('new_player'))
                     elif msg_type == 'game_starting':
-                        # Host is starting the game - set flag
+                        # Host is starting the game - set SEPARATE flag (don't overwrite pending_response!)
                         print("✓ Host is starting the game!")
                         with self.response_lock:
-                            self.pending_response = {'type': 'game_starting', 'status': 'start'}
+                            self.game_starting = True  # Use separate flag only
                     else:
                         # Store response for pending requests
                         with self.response_lock:
