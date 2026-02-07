@@ -203,7 +203,6 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
     print(f"[DEBUG] Starting forge phase. Multiplayer: {is_multiplayer}, Local Player ID: {local_player_id}")
 
     # Track forging state for UI display
-    forging_in_progress = {}  # {player_id: True/False}
     network_update_timer = 0
 
     # Simple blocking wait loop that still processes UI events so players can type prompts
@@ -220,46 +219,87 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
 
         ui.update(dt)
 
+        # IMPORTANT: Process completed weapon forging results (async)
+        ai_client.process_pending_results()
+
+        # Handle keyboard input for player movement during forge phase
+        keys = pygame.key.get_pressed()
+        if len(game_manager.players) > local_player_id:
+            p = game_manager.players[local_player_id]
+            # Movement: A/D or LEFT/RIGHT arrows
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+                p.move(-1)
+            elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+                p.move(1)
+            else:
+                p.stop_move()
+            # Jump: W or UP arrow or SPACE
+            if keys[pygame.K_w] or keys[pygame.K_UP] or keys[pygame.K_SPACE]:
+                p.jump()
+
+        # Update players during forge phase (so they can move)
+        for player in game_manager.players:
+            player.update(PLATFORMS, dt)
+
         # IMPORTANT: Process network updates during forge phase for multiplayer
-        if is_multiplayer and network_client and network_update_timer >= 0.033:
-            network_update_timer = 0
+        if is_multiplayer and network_client:
+            # Send our position updates
+            if network_update_timer >= 0.033:
+                if local_player_id < len(game_manager.players):
+                    player = game_manager.players[local_player_id]
+                    network_client.send_update({
+                        'x': player.rect.x,
+                        'y': player.rect.y,
+                        'vx': player.vel_x,
+                        'vy': player.vel_y,
+                        'facing_right': player.facing_right
+                    })
 
-            # Receive network updates from other player
-            remote_state = network_client.get_game_state()
-            if remote_state:
-                # Check if this is a weapon_forged notification
-                if remote_state.get('type') == 'weapon_forged':
-                    remote_player_id = remote_state.get('player_id')
-                    if remote_player_id is not None and remote_player_id not in forged_players:
-                        forged_players.add(remote_player_id)
-                        weapon_name = remote_state.get('weapon_name', 'Unknown')
-                        print(f"[DEBUG] Received weapon_forged from network: Player {remote_player_id + 1} forged {weapon_name}")
-                        ui.add_notification(f'Player {remote_player_id + 1} forged: {weapon_name}!', 3.0, (0, 255, 0))
+            if network_update_timer >= 0.033:
+                network_update_timer = 0
 
-                        # Create a placeholder weapon for the remote player
+                # Receive network updates from other player
+                remote_state = network_client.get_game_state()
+                if remote_state:
+                    # Check if this is a weapon_forged notification
+                    if remote_state.get('type') == 'weapon_forged':
+                        remote_player_id = remote_state.get('player_id')
+                        if remote_player_id is not None and remote_player_id not in forged_players:
+                            forged_players.add(remote_player_id)
+                            weapon_name = remote_state.get('weapon_name', 'Unknown')
+                            print(f"[DEBUG] Received weapon_forged from network: Player {remote_player_id + 1} forged {weapon_name}")
+                            ui.add_notification(f'Player {remote_player_id + 1} forged: {weapon_name}!', 3.0, (0, 255, 0))
+
+                            # Create a placeholder weapon for the remote player
+                            if remote_player_id < len(game_manager.players):
+                                remote_player = game_manager.players[remote_player_id]
+                                placeholder_weapon_data = {
+                                    'name': weapon_name,
+                                    'damage': 15,
+                                    'knockback': 5,
+                                    'size': 30,
+                                    'speed': 3,
+                                    'color': (200, 200, 255)
+                                }
+                                weapon = Weapon(placeholder_weapon_data, remote_player_id, remote_player.rect.centerx, remote_player.rect.centery)
+                                try:
+                                    remote_player.equip_weapon(weapon)
+                                except:
+                                    pass
+
+                    # Handle regular position updates during forge phase
+                    elif 'x' in remote_state and 'y' in remote_state:
+                        remote_player_id = 1 - local_player_id
                         if remote_player_id < len(game_manager.players):
                             remote_player = game_manager.players[remote_player_id]
-                            placeholder_weapon_data = {
-                                'name': weapon_name,
-                                'damage': 15,
-                                'knockback': 5,
-                                'size': 30,
-                                'speed': 3,
-                                'color': (200, 200, 255)
-                            }
-                            weapon = Weapon(placeholder_weapon_data, remote_player_id, remote_player.rect.centerx, remote_player.rect.centery)
-                            try:
-                                remote_player.equip_weapon(weapon)
-                            except:
-                                pass
-
-                # Also handle regular position updates during forge phase
-                elif 'x' in remote_state and 'y' in remote_state:
-                    remote_player_id = 1 - local_player_id
-                    if remote_player_id < len(game_manager.players):
-                        remote_player = game_manager.players[remote_player_id]
-                        remote_player.rect.x = remote_state.get('x', remote_player.rect.x)
-                        remote_player.rect.y = remote_state.get('y', remote_player.rect.y)
+                            remote_player.rect.x = remote_state.get('x', remote_player.rect.x)
+                            remote_player.rect.y = remote_state.get('y', remote_player.rect.y)
+                            if 'vx' in remote_state:
+                                remote_player.vel_x = remote_state.get('vx', 0)
+                            if 'vy' in remote_state:
+                                remote_player.vel_y = remote_state.get('vy', 0)
+                            if 'facing_right' in remote_state:
+                                remote_player.facing_right = remote_state.get('facing_right', True)
 
         # Draw a waiting screen with weapon input
         screen.blit(background, (0, 0))
@@ -281,7 +321,7 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
             if pid in forged_players:
                 status_color = (0, 255, 0)  # Green - forged
                 status_text = f"Player {pid + 1}: WEAPON FORGED!"
-            elif ai_client.is_processing and pid == local_player_id:
+            elif ai_client.is_player_processing(pid):
                 status_color = (255, 200, 0)  # Yellow - forging in progress
                 status_text = f"Player {pid + 1}: FORGING IN PROGRESS..."
             else:
@@ -294,7 +334,7 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
             status_y += 30
 
         # Show instruction at bottom
-        if local_player_id not in forged_players and not ai_client.is_processing:
+        if local_player_id not in forged_players and not ai_client.is_player_processing(local_player_id):
             instruction_text = ui.small_font.render("Type your weapon prompt below and press ENTER to forge!", True, (255, 255, 255))
             instruction_rect = instruction_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100))
             screen.blit(instruction_text, instruction_rect)

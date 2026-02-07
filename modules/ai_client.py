@@ -8,6 +8,7 @@ import time
 import base64
 import requests
 import pygame
+import threading
 from settings import *
 
 # Optional: load keys from a local .env file if present
@@ -33,11 +34,23 @@ class AIClient:
     def __init__(self):
         """Initialize AI client."""
         self.weapon_spawned_callback = None
-        self.is_processing = False
+        # Track processing state per player instead of global
+        self.processing_players = set()  # Set of player_ids currently processing
+        self.pending_results = []  # List of (weapon_data, player_id) tuples ready to be processed
+        self.results_lock = threading.Lock()
 
         # Read API keys from environment - safer than hardcoding
         self.hackclub_key = os.environ.get('HACKCLUB_API_KEY')
         self.removebg_key = os.environ.get('REMOVE_BG_API_KEY')
+
+    @property
+    def is_processing(self):
+        """Check if any player is currently processing."""
+        return len(self.processing_players) > 0
+
+    def is_player_processing(self, player_id):
+        """Check if a specific player is currently processing."""
+        return player_id in self.processing_players
 
     def set_weapon_spawned_callback(self, callback):
         """Set callback for weapon spawned: callback(weapon_data, player_id)"""
@@ -52,60 +65,80 @@ class AIClient:
                 return resp
             except Exception as e:
                 last_exc = e
+                print(f"[DEBUG] AI API: Request failed (attempt {attempt}): {e}")
                 time.sleep(backoff * attempt)
         raise last_exc
 
     def forge_weapon(self, prompt, player_id):
         """
-        Generate a weapon from a text prompt.
+        Generate a weapon from a text prompt (NON-BLOCKING).
 
-        If HACKCLUB_API_KEY (and optionally REMOVE_BG_API_KEY) are set in the
-        environment, this will attempt to (1) refine the prompt, (2) request an
-        image from HackClub, (3) remove the background via remove.bg, and (4)
-        return a pygame.Surface attached to weapon_data['image'].
-
-        If the API keys are not present or calls fail, falls back to the
-        internal mock weapon generator.
+        Starts a background thread to generate the weapon so the game loop
+        doesn't freeze. Call process_pending_results() each frame to handle
+        completed weapons.
         """
-        if self.is_processing:
-            print(f"[DEBUG] AI Client: Already processing a request, skipping forge for player {player_id + 1}")
+        if player_id in self.processing_players:
+            print(f"[DEBUG] AI Client: Player {player_id + 1} already processing, skipping")
             return None
-        self.is_processing = True
-        print(f"[DEBUG] AI Client: Starting forge process for player {player_id + 1}")
+
+        self.processing_players.add(player_id)
+        print(f"[DEBUG] AI Client: Starting forge process for player {player_id + 1} (async)")
         print(f"[DEBUG] AI Client: Prompt = '{prompt}'")
         print(f"[DEBUG] AI Client: HackClub API Key present = {bool(self.hackclub_key)}")
-        print(f"[DEBUG] AI Client: RemoveBG API Key present = {bool(self.removebg_key)}")
 
+        # Start forging in background thread
+        thread = threading.Thread(target=self._forge_weapon_thread, args=(prompt, player_id), daemon=True)
+        thread.start()
+
+        return True  # Indicate forging started
+
+    def _forge_weapon_thread(self, prompt, player_id):
+        """Background thread for weapon forging."""
         weapon_data = None
 
-        # Try real AI flow only if we have a HackClub API key
-        if self.hackclub_key:
-            try:
-                print(f"[DEBUG] AI Client: Attempting real AI image generation...")
-                weapon_data = self._forge_with_ai(prompt)
-                print(f"[DEBUG] AI Client: ✓ AI image generation successful!")
-            except Exception as e:
-                print(f'[DEBUG] AI Client: ✗ AI image generation failed, falling back to mock: {e}')
-                weapon_data = None
-        else:
-            print(f"[DEBUG] AI Client: No HackClub API key, using mock generator")
+        try:
+            # Try real AI flow only if we have a HackClub API key
+            if self.hackclub_key:
+                try:
+                    print(f"[DEBUG] AI Client: Attempting real AI image generation for Player {player_id + 1}...")
+                    weapon_data = self._forge_with_ai(prompt)
+                    print(f"[DEBUG] AI Client: ✓ AI image generation successful for Player {player_id + 1}!")
+                except Exception as e:
+                    print(f'[DEBUG] AI Client: ✗ AI image generation failed for Player {player_id + 1}, falling back to mock: {e}')
+                    weapon_data = None
+            else:
+                print(f"[DEBUG] AI Client: No HackClub API key, using mock generator for Player {player_id + 1}")
 
-        # Fallback to mock generator
-        if weapon_data is None:
-            print(f"[DEBUG] AI Client: Using mock weapon generator")
+            # Fallback to mock generator
+            if weapon_data is None:
+                print(f"[DEBUG] AI Client: Using mock weapon generator for Player {player_id + 1}")
+                weapon_data = self._generate_mock_weapon(prompt)
+        except Exception as e:
+            print(f"[DEBUG] AI Client: Exception in forge thread for Player {player_id + 1}: {e}")
             weapon_data = self._generate_mock_weapon(prompt)
 
-        self.is_processing = False
-        print(f"[DEBUG] AI Client: Forge process complete for player {player_id + 1}")
+        # Store result for main thread to process
+        with self.results_lock:
+            self.pending_results.append((weapon_data, player_id))
+            self.processing_players.discard(player_id)
 
-        # Trigger weapon spawned callback
-        if self.weapon_spawned_callback and weapon_data:
-            try:
-                self.weapon_spawned_callback(weapon_data, player_id)
-            except Exception as e:
-                print(f'[DEBUG] AI Client: Error in weapon_spawned_callback: {e}')
+        print(f"[DEBUG] AI Client: Forge process complete for Player {player_id + 1}")
 
-        return weapon_data
+    def process_pending_results(self):
+        """
+        Process any completed weapon forging results.
+        Call this every frame from the main game loop.
+        """
+        with self.results_lock:
+            results_to_process = self.pending_results[:]
+            self.pending_results.clear()
+
+        for weapon_data, player_id in results_to_process:
+            if self.weapon_spawned_callback and weapon_data:
+                try:
+                    self.weapon_spawned_callback(weapon_data, player_id)
+                except Exception as e:
+                    print(f'[DEBUG] AI Client: Error in weapon_spawned_callback: {e}')
 
     def _save_bytes_to_file(self, bts, prompt):
         """Save binary image bytes into GENERATED_DIR with safe filename and return path."""
