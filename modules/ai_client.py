@@ -68,31 +68,42 @@ class AIClient:
         internal mock weapon generator.
         """
         if self.is_processing:
+            print(f"[DEBUG] AI Client: Already processing a request, skipping forge for player {player_id + 1}")
             return None
         self.is_processing = True
+        print(f"[DEBUG] AI Client: Starting forge process for player {player_id + 1}")
+        print(f"[DEBUG] AI Client: Prompt = '{prompt}'")
+        print(f"[DEBUG] AI Client: HackClub API Key present = {bool(self.hackclub_key)}")
+        print(f"[DEBUG] AI Client: RemoveBG API Key present = {bool(self.removebg_key)}")
 
         weapon_data = None
 
         # Try real AI flow only if we have a HackClub API key
         if self.hackclub_key:
             try:
+                print(f"[DEBUG] AI Client: Attempting real AI image generation...")
                 weapon_data = self._forge_with_ai(prompt)
+                print(f"[DEBUG] AI Client: ✓ AI image generation successful!")
             except Exception as e:
-                print('AI image generation failed, falling back to mock:', e)
+                print(f'[DEBUG] AI Client: ✗ AI image generation failed, falling back to mock: {e}')
                 weapon_data = None
+        else:
+            print(f"[DEBUG] AI Client: No HackClub API key, using mock generator")
 
         # Fallback to mock generator
         if weapon_data is None:
+            print(f"[DEBUG] AI Client: Using mock weapon generator")
             weapon_data = self._generate_mock_weapon(prompt)
 
         self.is_processing = False
+        print(f"[DEBUG] AI Client: Forge process complete for player {player_id + 1}")
 
         # Trigger weapon spawned callback
         if self.weapon_spawned_callback and weapon_data:
             try:
                 self.weapon_spawned_callback(weapon_data, player_id)
             except Exception as e:
-                print('Error in weapon_spawned_callback:', e)
+                print(f'[DEBUG] AI Client: Error in weapon_spawned_callback: {e}')
 
         return weapon_data
 
@@ -144,6 +155,7 @@ class AIClient:
                 return False
 
         # Step 1: refine prompt (explicit about visibility, game icon, retro style)
+        print(f"[DEBUG] AI API: Step 1 - Refining prompt...")
         refine_payload = {
             'model': 'qwen/qwen3-32b',
             'messages': [
@@ -163,15 +175,20 @@ class AIClient:
         }
         resp = self._post_with_retries('https://ai.hackclub.com/proxy/v1/chat/completions', headers=headers, json=refine_payload, timeout=30)
         if resp.status_code != 200:
+            print(f"[DEBUG] AI API: ✗ Prompt refinement failed with status {resp.status_code}")
             raise RuntimeError(f'HackClub refine error: {resp.status_code} {resp.text}')
+        print(f"[DEBUG] AI API: ✓ Prompt refinement successful (status {resp.status_code})")
         refined = resp.json()
         specific_prompt = None
         try:
             specific_prompt = refined['choices'][0]['message']['content']
+            print(f"[DEBUG] AI API: Refined prompt = '{specific_prompt[:100]}...'")
         except Exception:
             specific_prompt = prompt
+            print(f"[DEBUG] AI API: Could not parse refined prompt, using original")
 
         # Step 2: request image generation (model that supports image)
+        print(f"[DEBUG] AI API: Step 2 - Generating image...")
         image_payload = {
             'model': 'google/gemini-2.5-flash-image',
             'messages': [
@@ -190,7 +207,9 @@ class AIClient:
         }
         resp2 = self._post_with_retries('https://ai.hackclub.com/proxy/v1/chat/completions', headers=headers, json=image_payload, timeout=90)
         if resp2.status_code != 200:
+            print(f"[DEBUG] AI API: ✗ Image generation failed with status {resp2.status_code}")
             raise RuntimeError(f'HackClub image error: {resp2.status_code} {resp2.text}')
+        print(f"[DEBUG] AI API: ✓ Image generation request successful (status {resp2.status_code})")
         out = resp2.json()
 
         # Parse image data - support base64 inline, b64_json, or returned URL
