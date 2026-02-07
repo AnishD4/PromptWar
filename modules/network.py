@@ -248,6 +248,9 @@ class GameClient:
     def join_room(self, room_code, player_name='Player'):
         """Join an existing room."""
         try:
+            # Set room_code BEFORE sending request so response is tagged correctly
+            self.room_code = room_code
+
             message = {'type': 'join_room', 'room_code': room_code, 'player_name': player_name}
             print(f"Sending join_room request for: {room_code}")
             self.client_socket.send(pickle.dumps(message))
@@ -257,6 +260,7 @@ class GameClient:
             start_time = time.time()
             while time.time() - start_time < 5.0:  # 5 second timeout
                 with self.response_lock:
+                    # Check for join response
                     if self.pending_response and self.pending_response.get('type') == 'join_room_response':
                         response = self.pending_response
                         self.pending_response = None
@@ -269,13 +273,28 @@ class GameClient:
                             return True
                         else:
                             print(f"✗ {response.get('message', 'Failed to join')}")
+                            self.room_code = None  # Reset on failure
                             return False
+
+                    # Also check if game already started (host started before we finished joining)
+                    # In this case, we should still consider the join successful
+                    if self.game_starting and self.player_id is not None:
+                        print(f"✓ Game starting during join - join assumed successful")
+                        return True
+
                 time.sleep(0.05)  # Small delay to prevent busy waiting
 
+            # Timeout - but check if we got player_id from player_joined notification
+            if self.player_id is not None:
+                print(f"✓ Join inferred from player_id: {self.player_id}")
+                return True
+
             print("✗ Timeout waiting for join_room response")
+            self.room_code = None  # Reset on timeout
             return False
         except Exception as e:
             print(f"✗ Join room error: {e}")
+            self.room_code = None  # Reset on error
             return False
 
     def get_lobby_info(self):

@@ -556,24 +556,31 @@ def main():
             if network_client.connect(server_ip):
                 if network_client.join_room(room_info, 'Player2'):
                     print("✓ Joined room successfully!")
-                    print("✓ Waiting in lobby...")
 
-                    # Show lobby screen
-                    lobby_result = show_lobby(screen, audio_manager, network_client, room_info, is_host=False)
-
-                    if lobby_result == "START":
-                        print("✓ Game starting!")
+                    # Check if game already started during join
+                    if network_client.game_starting:
+                        print("✓ Game already starting - going straight to game!")
                         result = run_game(f"{room_info}", audio_manager, is_host=False, network_client=network_client)
                         network_client.disconnect()
-                    elif lobby_result == "LEAVE" or lobby_result == "CANCEL":
-                        print("✓ Left lobby - returning to menu")
-                        network_client.disconnect()
-                        result = "MENU"
                     else:
-                        network_client.disconnect()
-                        result = "MENU"
+                        print("✓ Waiting in lobby...")
+                        # Show lobby screen
+                        lobby_result = show_lobby(screen, audio_manager, network_client, room_info, is_host=False)
+
+                        if lobby_result == "START":
+                            print("✓ Game starting!")
+                            result = run_game(f"{room_info}", audio_manager, is_host=False, network_client=network_client)
+                            network_client.disconnect()
+                        elif lobby_result == "LEAVE" or lobby_result == "CANCEL":
+                            print("✓ Left lobby - returning to menu")
+                            network_client.disconnect()
+                            result = "MENU"
+                        else:
+                            network_client.disconnect()
+                            result = "MENU"
                 else:
                     print("✗ Failed to join room - check room code")
+                    network_client.disconnect()
                     result = "MENU"
             else:
                 print("✗ Failed to connect to server - check IP address")
