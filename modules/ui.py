@@ -42,30 +42,14 @@ class UI:
         # Timer
         self.time_remaining = ROUND_TIME
 
-        # Weapon prompt input
-        self.input_active = False
-        self.input_text = ""
-        self.input_rect = pygame.Rect(
-            SCREEN_WIDTH // 2 - INPUT_BOX_WIDTH // 2,
-            SCREEN_HEIGHT - 80,
-            INPUT_BOX_WIDTH,
-            INPUT_BOX_HEIGHT
-        )
-        self.forge_button_rect = pygame.Rect(
-            self.input_rect.right + 10,
-            self.input_rect.y,
-            130,
-            INPUT_BOX_HEIGHT
-        )
-
-        # Cooldown tracking
+        # Cooldown tracking (for compatibility)
         self.forge_cooldowns = {}
 
         # Notifications with retro style
         self.notifications = []
         self.screen_shake = 0
 
-        # Callbacks
+        # Callbacks (not used in melee-only mode)
         self.forge_weapon_callback = None
         
         # Animation effects
@@ -161,6 +145,9 @@ class UI:
                     self.show_banner = False
 
     def handle_event(self, event, current_player_id=0):
+        """Handle input events for UI elements (disabled in melee-only mode)."""
+        # No input handling needed - all prompts are before rounds
+        return False
         """Handle input events for UI elements."""
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.input_rect.collidepoint(event.pos):
@@ -207,7 +194,7 @@ class UI:
         self._draw_retro_banner()
         self._draw_retro_health_bars()
         self._draw_retro_timer()
-        self._draw_retro_weapon_input()
+        # self._draw_retro_weapon_input()  # Not needed in melee-only mode
         self._draw_retro_notifications()
         self._draw_retro_game_info()
         self._draw_crt_effect()

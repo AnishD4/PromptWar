@@ -66,9 +66,28 @@ class Player:
         self.character_image = None  # pygame.Surface from AI
         self.weapon_image = None  # pygame.Surface from AI
 
+        # AI-customizable stats (defaults, AI can override these)
+        self.custom_move_speed = PLAYER_MOVE_SPEED  # Default movement speed
+        self.custom_air_speed = PLAYER_AIR_SPEED  # Default air control
+        self.custom_jump_power = PLAYER_JUMP_POWER  # Default jump height
+        self.custom_double_jump = PLAYER_DOUBLE_JUMP  # Can double jump?
+        self.custom_size_multiplier = 1.0  # Size scaling (1.0 = normal)
+        self.custom_max_health = PLAYER_MAX_HEALTH  # Max HP
+
+        # Apply custom size
+        self._apply_custom_size()
+
         # Callbacks
         self.on_health_changed = None
         self.on_attack = None
+
+    def _apply_custom_size(self):
+        """Apply custom size multiplier to player rect."""
+        center = self.rect.center
+        new_width = int(PLAYER_WIDTH * self.custom_size_multiplier)
+        new_height = int(PLAYER_HEIGHT * self.custom_size_multiplier)
+        self.rect = pygame.Rect(0, 0, new_width, new_height)
+        self.rect.center = center
 
     def set_health_changed_callback(self, callback):
         """Set health callback."""
@@ -187,10 +206,10 @@ class Player:
 
         if self.on_ground:
             acceleration = 1.5
-            target_speed = PLAYER_MOVE_SPEED
+            target_speed = self.custom_move_speed  # Use custom stat
         else:
             acceleration = 0.8
-            target_speed = PLAYER_AIR_SPEED
+            target_speed = self.custom_air_speed  # Use custom stat
 
         self.vel_x += direction * acceleration
 
@@ -199,7 +218,7 @@ class Player:
 
     def stop_move(self):
         """Stop movement."""
-        if self.on_ground and abs(self.vel_x) < PLAYER_MOVE_SPEED * 1.2:
+        if self.on_ground and abs(self.vel_x) < self.custom_move_speed * 1.2:
             self.vel_x *= 0.4
 
     def jump(self):
@@ -207,10 +226,10 @@ class Player:
         if not self.alive or self.hit_stun_timer > 0:
             return
 
-        can_jump = self.on_ground or self.coyote_timer > 0 or self.jumps_remaining > 0
+        can_jump = self.on_ground or self.coyote_timer > 0 or (self.jumps_remaining > 0 and self.custom_double_jump)
 
         if can_jump:
-            self.vel_y = -PLAYER_JUMP_POWER
+            self.vel_y = -self.custom_jump_power  # Use custom jump power
             self.on_ground = False
             self.coyote_timer = 0
             if not self.on_ground:
@@ -225,8 +244,21 @@ class Player:
         self.attack_timer = 0.3
         self.attack_cooldown = 0.5
 
-        hitbox_width = 50
-        hitbox_height = 40
+        # Hitbox will be updated each frame in _update_attack_hitbox
+        self._update_attack_hitbox()
+
+        if self.on_attack:
+            self.on_attack(self.player_id, self.attack_hitbox)
+
+    def _update_attack_hitbox(self):
+        """Update attack hitbox to follow player position."""
+        if self.attack_state == self.ATTACK_NONE:
+            self.attack_hitbox = None
+            return
+
+        # Scale hitbox with player size
+        hitbox_width = int(50 * self.custom_size_multiplier)
+        hitbox_height = int(40 * self.custom_size_multiplier)
 
         if self.facing_right:
             hitbox_x = self.rect.right
@@ -240,13 +272,13 @@ class Player:
             hitbox_height
         )
 
-        if self.on_attack:
-            self.on_attack(self.player_id, self.attack_hitbox)
-
     def _update_attack(self, dt):
         """Update attack."""
         if self.attack_timer > 0:
             self.attack_timer -= dt
+            # Keep updating hitbox position as player moves
+            self._update_attack_hitbox()
+
             if self.attack_timer <= 0:
                 self.attack_state = self.ATTACK_NONE
                 self.attack_hitbox = None
@@ -295,7 +327,8 @@ class Player:
     def respawn(self, x=None, y=None):
         """Respawn."""
         self.alive = True
-        self.health = PLAYER_MAX_HEALTH
+        self.health = self.custom_max_health  # Use custom max health
+        self.max_health = self.custom_max_health
         self.vel_x = 0
         self.vel_y = 0
         self.invulnerable = True
@@ -305,7 +338,7 @@ class Player:
             self.rect.x = x
             self.rect.y = y
 
-        self.jumps_remaining = 2 if PLAYER_DOUBLE_JUMP else 1
+        self.jumps_remaining = 2 if self.custom_double_jump else 1  # Use custom double jump
 
         if self.on_health_changed:
             self.on_health_changed(self.player_id, self.health)
