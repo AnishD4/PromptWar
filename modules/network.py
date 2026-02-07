@@ -153,7 +153,8 @@ class GameServer:
         elif msg_type == 'update':
             room_code = message['room_code']
             if room_code in self.rooms:
-                # Broadcast to all players in room
+                # Broadcast to all players in room (including weapon_forged messages)
+                update_data = message.get('data', {})
                 for player_conn in self.rooms[room_code]['players']:
                     if player_conn != conn:
                         try:

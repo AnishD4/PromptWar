@@ -172,6 +172,16 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
                 player.equip_weapon(weapon)
                 forged_players.add(player_id)
                 print(f"[DEBUG] Player {player_id + 1} weapon equipped successfully!")
+
+                # In multiplayer, send weapon forged notification to other player
+                if is_multiplayer and network_client:
+                    network_client.send_update({
+                        'type': 'weapon_forged',
+                        'player_id': player_id,
+                        'weapon_name': weapon_data.get('name', 'Unknown'),
+                        'forged': True
+                    })
+                    print(f"[DEBUG] Sent weapon_forged notification over network for Player {player_id + 1}")
             except Exception as e:
                 print(f"[DEBUG] Weapon equip failed, adding to game world: {e}")
                 # Fallback: add to game world if equip fails
@@ -192,20 +202,15 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
     ui.add_notification('Type your weapon and press ENTER to forge!', 5.0, (0, 255, 255))
     print(f"[DEBUG] Starting forge phase. Multiplayer: {is_multiplayer}, Local Player ID: {local_player_id}")
 
-    # In multiplayer, each player only needs to forge their own weapon
-    # In single player, we need both players to forge
-    if is_multiplayer:
-        players_to_forge = {local_player_id}  # Only local player needs to forge
-    else:
-        players_to_forge = set(range(num_players))  # All players need to forge
-
     # Track forging state for UI display
     forging_in_progress = {}  # {player_id: True/False}
+    network_update_timer = 0
 
     # Simple blocking wait loop that still processes UI events so players can type prompts
     waiting = True
     while waiting:
         dt = clock.tick(FPS) / 1000.0
+        network_update_timer += dt
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -214,6 +219,47 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
             ui.handle_event(event, local_player_id)
 
         ui.update(dt)
+
+        # IMPORTANT: Process network updates during forge phase for multiplayer
+        if is_multiplayer and network_client and network_update_timer >= 0.033:
+            network_update_timer = 0
+
+            # Receive network updates from other player
+            remote_state = network_client.get_game_state()
+            if remote_state:
+                # Check if this is a weapon_forged notification
+                if remote_state.get('type') == 'weapon_forged':
+                    remote_player_id = remote_state.get('player_id')
+                    if remote_player_id is not None and remote_player_id not in forged_players:
+                        forged_players.add(remote_player_id)
+                        weapon_name = remote_state.get('weapon_name', 'Unknown')
+                        print(f"[DEBUG] Received weapon_forged from network: Player {remote_player_id + 1} forged {weapon_name}")
+                        ui.add_notification(f'Player {remote_player_id + 1} forged: {weapon_name}!', 3.0, (0, 255, 0))
+
+                        # Create a placeholder weapon for the remote player
+                        if remote_player_id < len(game_manager.players):
+                            remote_player = game_manager.players[remote_player_id]
+                            placeholder_weapon_data = {
+                                'name': weapon_name,
+                                'damage': 15,
+                                'knockback': 5,
+                                'size': 30,
+                                'speed': 3,
+                                'color': (200, 200, 255)
+                            }
+                            weapon = Weapon(placeholder_weapon_data, remote_player_id, remote_player.rect.centerx, remote_player.rect.centery)
+                            try:
+                                remote_player.equip_weapon(weapon)
+                            except:
+                                pass
+
+                # Also handle regular position updates during forge phase
+                elif 'x' in remote_state and 'y' in remote_state:
+                    remote_player_id = 1 - local_player_id
+                    if remote_player_id < len(game_manager.players):
+                        remote_player = game_manager.players[remote_player_id]
+                        remote_player.rect.x = remote_state.get('x', remote_player.rect.x)
+                        remote_player.rect.y = remote_state.get('y', remote_player.rect.y)
 
         # Draw a waiting screen with weapon input
         screen.blit(background, (0, 0))
@@ -234,10 +280,10 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
         for pid in range(num_players):
             if pid in forged_players:
                 status_color = (0, 255, 0)  # Green - forged
-                status_text = f"Player {pid + 1}: ✓ WEAPON FORGED!"
+                status_text = f"Player {pid + 1}: WEAPON FORGED!"
             elif ai_client.is_processing and pid == local_player_id:
                 status_color = (255, 200, 0)  # Yellow - forging in progress
-                status_text = f"Player {pid + 1}: ⚡ FORGING IN PROGRESS..."
+                status_text = f"Player {pid + 1}: FORGING IN PROGRESS..."
             else:
                 status_color = (150, 150, 150)  # Gray - waiting
                 status_text = f"Player {pid + 1}: Waiting for weapon..."
@@ -252,21 +298,19 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
             instruction_text = ui.small_font.render("Type your weapon prompt below and press ENTER to forge!", True, (255, 255, 255))
             instruction_rect = instruction_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100))
             screen.blit(instruction_text, instruction_rect)
+        elif local_player_id in forged_players and len(forged_players) < num_players:
+            waiting_text = ui.small_font.render("Waiting for opponent to forge their weapon...", True, (255, 200, 0))
+            waiting_rect = waiting_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 100))
+            screen.blit(waiting_text, waiting_rect)
 
         pygame.display.flip()
 
-        # Check if local player has forged (multiplayer) or all players forged (single player)
-        if is_multiplayer:
-            if local_player_id in forged_players:
-                ui.add_notification('Weapon forged! Waiting for opponent...', 3.0, (0, 255, 0))
-                print(f"[DEBUG] Local player {local_player_id + 1} has forged. Waiting for opponent...")
-                waiting = False
-                break
-        else:
-            if len(forged_players) >= num_players:
-                print(f"[DEBUG] All {num_players} players have forged weapons. Starting battle!")
-                waiting = False
-                break
+        # Check if ALL players have forged (both in single player and multiplayer)
+        if len(forged_players) >= num_players:
+            print(f"[DEBUG] All {num_players} players have forged weapons. Starting battle!")
+            ui.add_notification('All weapons forged! Battle starting!', 2.0, (0, 255, 0))
+            waiting = False
+            break
 
     # Start the round once all players have forged
     print("[DEBUG] Forge phase complete. Starting game round!")
@@ -336,50 +380,32 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
         keys = pygame.key.get_pressed()
 
         # Control local player with enhanced controls
+        # Both host and client use the SAME controls (WASD + F for attack)
         if len(game_manager.players) > local_player_id:
             p = game_manager.players[local_player_id]
 
-            # Player 0 controls (host or single player)
-            if local_player_id == 0:
-                # Movement
-                if keys[pygame.K_a]:
-                    p.move(-1)
-                elif keys[pygame.K_d]:
-                    p.move(1)
-                else:
-                    p.stop_move()
-
-                # Jump
-                if keys[pygame.K_w]:
-                    p.jump()
-
-                # Attack (new mechanic!)
-                if keys[pygame.K_f]:
-                    p.attack(Player.ATTACK_SWING)
-
-            # Player 1 controls (client in multiplayer)
+            # Universal controls for local player (works for both host and client)
+            # Movement: A/D or LEFT/RIGHT arrows
+            if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+                p.move(-1)
+            elif keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+                p.move(1)
             else:
-                # Movement
-                if keys[pygame.K_LEFT]:
-                    p.move(-1)
-                elif keys[pygame.K_RIGHT]:
-                    p.move(1)
-                else:
-                    p.stop_move()
+                p.stop_move()
 
-                # Jump
-                if keys[pygame.K_UP]:
-                    p.jump()
+            # Jump: W or UP arrow or SPACE
+            if keys[pygame.K_w] or keys[pygame.K_UP] or keys[pygame.K_SPACE]:
+                p.jump()
 
-                # Attack (new mechanic!)
-                if keys[pygame.K_RSHIFT] or keys[pygame.K_RCTRL]:
-                    p.attack(Player.ATTACK_SWING)
+            # Attack: F or RSHIFT or RCTRL
+            if keys[pygame.K_f] or keys[pygame.K_RSHIFT] or keys[pygame.K_RCTRL]:
+                p.attack(Player.ATTACK_SWING)
 
-        # Non-local player controls (for single player mode with 2 players)
+        # Non-local player controls (for single player mode with 2 players on same keyboard)
         if not is_multiplayer:
             if len(game_manager.players) > 1:
                 p1 = game_manager.players[1]
-                # Movement
+                # Player 2 uses arrow keys in local mode
                 if keys[pygame.K_LEFT]:
                     p1.move(-1)
                 elif keys[pygame.K_RIGHT]:
