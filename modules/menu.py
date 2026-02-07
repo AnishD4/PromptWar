@@ -153,7 +153,7 @@ class MenuScreen:
         
         self.room_name_input = TextInput(center_x - 200, 280, 400, 50, ">>> ENTER ROOM NAME <<<")
         self.create_buttons = [
-            Button(center_x - 150, 420, 300, 60, "START GAME", self.cyan),
+            Button(center_x - 150, 420, 300, 60, "CREATE LOBBY", self.cyan),
             Button(center_x - 150, 500, 300, 60, "BACK", self.yellow),
         ]
     
@@ -161,12 +161,12 @@ class MenuScreen:
         """Initialize join room screen elements."""
         center_x = SCREEN_WIDTH // 2
         
-        # Add IP address input
-        self.server_ip_input = TextInput(center_x - 200, 260, 400, 50, ">>> SERVER IP <<<")
-        self.room_code_input = TextInput(center_x - 200, 340, 400, 50, ">>> ROOM CODE <<<")
+        # Add IP address input with better spacing
+        self.server_ip_input = TextInput(center_x - 200, 280, 400, 50, ">>> SERVER IP <<<")
+        self.room_code_input = TextInput(center_x - 200, 380, 400, 50, ">>> ROOM CODE <<<")
         self.join_buttons = [
-            Button(center_x - 150, 440, 300, 60, "JOIN", self.magenta),
-            Button(center_x - 150, 520, 300, 60, "BACK", self.yellow),
+            Button(center_x - 150, 480, 300, 60, "JOIN", self.magenta),
+            Button(center_x - 150, 560, 300, 60, "BACK", self.yellow),
         ]
     
     def update(self, dt):
@@ -214,12 +214,12 @@ class MenuScreen:
         if self.room_name_input.handle_event(event):
             if self.room_name_input.text.strip():
                 self.room_name = self.room_name_input.text
-                return "START_GAME"
-        
+                return "CREATE_LOBBY"
+
         if self.create_buttons[0].is_clicked(event):
             if self.room_name_input.text.strip():
                 self.room_name = self.room_name_input.text
-                return "START_GAME"
+                return "CREATE_LOBBY"
         elif self.create_buttons[1].is_clicked(event):
             self.state = "HOME"
             self.room_name_input.text = ""
