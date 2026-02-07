@@ -97,9 +97,10 @@ class GameManager:
 
     def draw_platforms(self, screen):
         """Draw all platforms."""
-        for platform in PLATFORMS:
-            pygame.draw.rect(screen, PLATFORM_COLOR, platform)
-            pygame.draw.rect(screen, WHITE, platform, 2)  # Border
+        if PLATFORMS:
+            for platform in PLATFORMS:
+                pygame.draw.rect(screen, PLATFORM_COLOR, platform)
+                pygame.draw.rect(screen, WHITE, platform, 2)  # Border
 
     def draw_weapons(self, screen):
         """Draw all weapons."""
@@ -110,4 +111,3 @@ class GameManager:
         """Draw all players."""
         for player in self.players:
             player.draw(screen)
-

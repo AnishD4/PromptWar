@@ -4,6 +4,7 @@
 
 import pygame
 from settings import *
+from modules.sprite_generator import create_retro_character_sprite
 
 
 class Player:
@@ -31,6 +32,10 @@ class Player:
         # Event callbacks
         self.health_changed_callback = None
 
+        # Create retro sprite
+        self.sprite = create_retro_character_sprite(color, (PLAYER_WIDTH, PLAYER_HEIGHT))
+        self.facing_right = True
+
     def set_health_changed_callback(self, callback):
         """Set callback for health changes: callback(player_id, new_health)"""
         self.health_changed_callback = callback
@@ -50,13 +55,14 @@ class Player:
         self.rect.x += self.velocity_x
         self.rect.y += self.velocity_y
 
-        # Platform collision (placeholder)
+        # Platform collision
         self.on_ground = False
-        for platform in platforms:
-            if self.rect.colliderect(platform) and self.velocity_y > 0:
-                self.rect.bottom = platform.top
-                self.velocity_y = 0
-                self.on_ground = True
+        if platforms:  # Check if platforms exist
+            for platform in platforms:
+                if self.rect.colliderect(platform) and self.velocity_y > 0:
+                    self.rect.bottom = platform.top
+                    self.velocity_y = 0
+                    self.on_ground = True
 
         # Check if fallen off screen
         if self.rect.top > SCREEN_HEIGHT:
@@ -106,11 +112,19 @@ class Player:
             self.health_changed_callback(self.player_id, self.health)
 
     def draw(self, screen):
-        """Draw the player."""
+        """Draw the player with retro sprite."""
         if self.alive:
-            pygame.draw.rect(screen, self.color, self.rect)
-            # Draw a simple face
-            eye_y = self.rect.y + 20
-            pygame.draw.circle(screen, BLACK, (self.rect.x + 12, eye_y), 3)
-            pygame.draw.circle(screen, BLACK, (self.rect.x + 28, eye_y), 3)
+            # Flip sprite based on direction
+            if self.velocity_x < 0 and self.facing_right:
+                self.facing_right = False
+            elif self.velocity_x > 0 and not self.facing_right:
+                self.facing_right = True
 
+            sprite_to_draw = self.sprite if self.facing_right else pygame.transform.flip(self.sprite, True, False)
+            screen.blit(sprite_to_draw, self.rect)
+
+            # Draw pixel shadow beneath player
+            shadow_rect = pygame.Rect(self.rect.x + 5, self.rect.bottom - 3, self.rect.width - 10, 3)
+            shadow_surface = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
+            shadow_surface.fill((0, 0, 0, 100))
+            screen.blit(shadow_surface, shadow_rect)

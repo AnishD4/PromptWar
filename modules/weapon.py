@@ -4,6 +4,7 @@
 
 import pygame
 from settings import *
+from modules.sprite_generator import create_retro_weapon_sprite
 
 
 class Weapon:
@@ -38,6 +39,10 @@ class Weapon:
         self.velocity_x = self.speed
         self.velocity_y = 0
         self.active = True
+
+        # Create retro weapon sprite
+        self.sprite = create_retro_weapon_sprite(self.name, self.color, self.size)
+        self.rotation = 0
 
     def update(self, dt):
         """Update weapon position and physics."""
@@ -84,11 +89,16 @@ class Weapon:
         return False
 
     def draw(self, screen):
-        """Draw the weapon."""
+        """Draw the weapon with retro sprite."""
         if self.active:
-            pygame.draw.rect(screen, self.color, self.rect)
-            # Draw a simple weapon icon (sword-like)
-            pygame.draw.line(screen, WHITE,
-                           (self.rect.centerx, self.rect.top),
-                           (self.rect.centerx, self.rect.bottom), 2)
+            # Rotate sprite for effect
+            self.rotation += 5
+            rotated_sprite = pygame.transform.rotate(self.sprite, self.rotation)
+            rotated_rect = rotated_sprite.get_rect(center=self.rect.center)
+            screen.blit(rotated_sprite, rotated_rect)
 
+            # Pixel trail effect
+            trail_rect = pygame.Rect(self.rect.x - 5, self.rect.centery - 2, 5, 4)
+            trail_surface = pygame.Surface(trail_rect.size, pygame.SRCALPHA)
+            trail_surface.fill((*self.color, 100))
+            screen.blit(trail_surface, trail_rect)
