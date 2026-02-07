@@ -1,130 +1,482 @@
 # modules/player.py
-# Player class - handles movement, knockback, health
-# T1: Gameplay / Player
+# T1: Enhanced Player Controller with smooth movement and attacks
+# AI-ready: Clear structure for easy modification
 
 import pygame
+import math
 from settings import *
-from modules.sprite_generator import create_retro_character_sprite
 
 
 class Player:
-    """Represents a player character in the game."""
+    """
+    Player controller with polished movement and combat.
+
+    AI-Friendly Features:
+    - All constants in settings.py
+    - Clear method separation
+    - Event-driven system
+    - Documented attack system
+    """
+
+    # Attack types
+    ATTACK_NONE = 0
+    ATTACK_SWING = 1
+    ATTACK_THRUST = 2
 
     def __init__(self, player_id, x, y, color):
-        """
-        Initialize a player.
-
-        Args:
-            player_id: Unique identifier for the player
-            x, y: Starting position
-            color: Player color tuple (R, G, B)
-        """
+        """Initialize player."""
         self.player_id = player_id
-        self.rect = pygame.Rect(x, y, PLAYER_WIDTH, PLAYER_HEIGHT)
         self.color = color
-        self.health = MAX_HEALTH
-        self.velocity_x = 0
-        self.velocity_y = 0
+
+        # Position
+        self.rect = pygame.Rect(x, y, PLAYER_WIDTH, PLAYER_HEIGHT)
+        self.vel_x = 0
+        self.vel_y = 0
         self.on_ground = False
-        self.alive = True
-        self.respawn_timer = 0
-
-        # Event callbacks
-        self.health_changed_callback = None
-
-        # Create retro sprite
-        self.sprite = create_retro_character_sprite(color, (PLAYER_WIDTH, PLAYER_HEIGHT))
         self.facing_right = True
 
+        # Health
+        self.health = PLAYER_MAX_HEALTH
+        self.max_health = PLAYER_MAX_HEALTH
+        self.alive = True
+        self.invulnerable = False
+        self.invuln_timer = 0
+
+        # State
+        self.respawn_timer = 0
+        self.hit_stun_timer = 0
+
+        # Jump
+        self.jumps_remaining = 2 if PLAYER_DOUBLE_JUMP else 1
+        self.coyote_timer = 0
+
+        # Attack
+        self.attack_state = self.ATTACK_NONE
+        self.attack_timer = 0
+        self.attack_cooldown = 0
+        self.attack_hitbox = None
+
+        # Visual
+        self.hit_flash_timer = 0
+        self.anim_timer = 0
+
+        # AI-generated content (set by main.py after prompt input)
+        self.character_prompt = "warrior"
+        self.weapon_prompt = "sword"
+        self.character_image = None  # pygame.Surface from AI
+        self.weapon_image = None  # pygame.Surface from AI
+
+        # Callbacks
+        self.on_health_changed = None
+        self.on_attack = None
+
     def set_health_changed_callback(self, callback):
-        """Set callback for health changes: callback(player_id, new_health)"""
-        self.health_changed_callback = callback
+        """Set health callback."""
+        self.on_health_changed = callback
 
     def update(self, platforms, dt):
-        """Update player physics and position."""
+        """Main update loop."""
+        self._update_timers(dt)
+
         if not self.alive:
-            self.respawn_timer -= dt
-            if self.respawn_timer <= 0:
-                self.respawn()
+            self._update_death_state(dt)
             return
 
-        # Apply gravity
-        self.velocity_y += GRAVITY
+        # Physics
+        self._apply_gravity()
+        self._apply_friction()
+        self.vel_y = min(self.vel_y, MAX_VELOCITY_Y)
 
-        # Update position
-        self.rect.x += self.velocity_x
-        self.rect.y += self.velocity_y
+        # Movement
+        self._move_horizontal(platforms)
+        self._move_vertical(platforms)
+        self._handle_screen_bounds()
 
-        # Platform collision
+        # Attack
+        self._update_attack(dt)
+
+    def _update_timers(self, dt):
+        """Update timers."""
+        if self.invuln_timer > 0:
+            self.invuln_timer -= dt
+            self.invulnerable = self.invuln_timer > 0
+        if self.hit_stun_timer > 0:
+            self.hit_stun_timer -= dt
+        if self.hit_flash_timer > 0:
+            self.hit_flash_timer -= dt
+        if self.coyote_timer > 0:
+            self.coyote_timer -= dt
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= dt
+        self.anim_timer += dt
+
+    def _apply_gravity(self):
+        """Apply gravity."""
+        self.vel_y += GRAVITY_STRENGTH
+
+    def _apply_friction(self):
+        """Apply friction."""
+        if self.on_ground:
+            self.vel_x *= FRICTION_GROUND
+        else:
+            self.vel_x *= FRICTION_AIR
+        if abs(self.vel_x) < 0.15:
+            self.vel_x = 0
+
+    def _move_horizontal(self, platforms):
+        """Move horizontally."""
+        self.rect.x += self.vel_x
+        for platform in platforms:
+            if self.rect.colliderect(platform):
+                if self.vel_x > 0:
+                    self.rect.right = platform.left
+                    self.vel_x = 0
+                elif self.vel_x < 0:
+                    self.rect.left = platform.right
+                    self.vel_x = 0
+
+    def _move_vertical(self, platforms):
+        """Move vertically."""
+        was_on_ground = self.on_ground
+        self.rect.y += self.vel_y
         self.on_ground = False
-        if platforms:  # Check if platforms exist
-            for platform in platforms:
-                if self.rect.colliderect(platform) and self.velocity_y > 0:
-                    self.rect.bottom = platform.top
-                    self.velocity_y = 0
-                    self.on_ground = True
 
-        # Check if fallen off screen
+        for platform in platforms:
+            if self.rect.colliderect(platform):
+                if self.vel_y > 0:
+                    self.rect.bottom = platform.top
+                    self.vel_y = 0
+                    self.on_ground = True
+                    self.jumps_remaining = 2 if PLAYER_DOUBLE_JUMP else 1
+                elif self.vel_y < 0:
+                    self.rect.top = platform.bottom
+                    self.vel_y = 0
+
+        if was_on_ground and not self.on_ground:
+            self.coyote_timer = 0.15
+
+    def _handle_screen_bounds(self):
+        """Handle screen edges."""
+        if self.rect.left < 0:
+            self.rect.left = 0
+            self.vel_x = 0
+        elif self.rect.right > SCREEN_WIDTH:
+            self.rect.right = SCREEN_WIDTH
+            self.vel_x = 0
+
         if self.rect.top > SCREEN_HEIGHT:
-            self.take_damage(50)  # Fall damage
+            self.die()
+
+    def _update_death_state(self, dt):
+        """Update death."""
+        self.respawn_timer -= dt
+        self.vel_y += GRAVITY_STRENGTH * 0.3
+        self.rect.y += self.vel_y
+
+    # ═══════════════════════════════════════════════════
+    # PLAYER ACTIONS
+    # ═══════════════════════════════════════════════════
 
     def move(self, direction):
-        """Move player left (-1) or right (1)."""
-        self.velocity_x = direction * PLAYER_SPEED
+        """Move with smooth acceleration."""
+        if not self.alive or self.hit_stun_timer > 0:
+            return
+
+        if direction != 0:
+            self.facing_right = direction > 0
+
+        if self.on_ground:
+            acceleration = 1.5
+            target_speed = PLAYER_MOVE_SPEED
+        else:
+            acceleration = 0.8
+            target_speed = PLAYER_AIR_SPEED
+
+        self.vel_x += direction * acceleration
+
+        if abs(self.vel_x) > target_speed:
+            self.vel_x = target_speed * (1 if self.vel_x > 0 else -1)
+
+    def stop_move(self):
+        """Stop movement."""
+        if self.on_ground and abs(self.vel_x) < PLAYER_MOVE_SPEED * 1.2:
+            self.vel_x *= 0.4
 
     def jump(self):
-        """Make player jump if on ground."""
-        if self.on_ground:
-            self.velocity_y = -JUMP_STRENGTH
+        """Jump with double jump."""
+        if not self.alive or self.hit_stun_timer > 0:
+            return
+
+        can_jump = self.on_ground or self.coyote_timer > 0 or self.jumps_remaining > 0
+
+        if can_jump:
+            self.vel_y = -PLAYER_JUMP_POWER
+            self.on_ground = False
+            self.coyote_timer = 0
+            if not self.on_ground:
+                self.jumps_remaining -= 1
+
+    def attack(self, attack_type=ATTACK_SWING):
+        """Perform melee attack."""
+        if not self.alive or self.attack_cooldown > 0:
+            return
+
+        self.attack_state = attack_type
+        self.attack_timer = 0.3
+        self.attack_cooldown = 0.5
+
+        hitbox_width = 50
+        hitbox_height = 40
+
+        if self.facing_right:
+            hitbox_x = self.rect.right
+        else:
+            hitbox_x = self.rect.left - hitbox_width
+
+        self.attack_hitbox = pygame.Rect(
+            hitbox_x,
+            self.rect.centery - hitbox_height // 2,
+            hitbox_width,
+            hitbox_height
+        )
+
+        if self.on_attack:
+            self.on_attack(self.player_id, self.attack_hitbox)
+
+    def _update_attack(self, dt):
+        """Update attack."""
+        if self.attack_timer > 0:
+            self.attack_timer -= dt
+            if self.attack_timer <= 0:
+                self.attack_state = self.ATTACK_NONE
+                self.attack_hitbox = None
+
+    def get_attack_hitbox(self):
+        """Get attack hitbox."""
+        if self.attack_state != self.ATTACK_NONE and self.attack_hitbox:
+            return self.attack_hitbox
+        return None
+
+    # ═══════════════════════════════════════════════════
+    # COMBAT
+    # ═══════════════════════════════════════════════════
 
     def take_damage(self, damage, knockback_x=0, knockback_y=0):
-        """
-        Apply damage and knockback to player.
+        """Take damage with knockback."""
+        if not self.alive or self.invulnerable:
+            return
 
-        Args:
-            damage: Amount of damage to take
-            knockback_x, knockback_y: Knockback force
-        """
         self.health -= damage
-        self.velocity_x += knockback_x
-        self.velocity_y += knockback_y
+        self.health = max(0, self.health)
 
-        # Trigger health changed event
-        if self.health_changed_callback:
-            self.health_changed_callback(self.player_id, max(0, self.health))
+        self.vel_x += knockback_x
+        self.vel_y += knockback_y
+
+        self.hit_flash_timer = HIT_FLASH_DURATION
+        self.hit_stun_timer = PLAYER_HIT_STUN
+
+        if self.on_health_changed:
+            self.on_health_changed(self.player_id, self.health)
 
         if self.health <= 0:
             self.die()
 
     def die(self):
-        """Handle player death."""
+        """Die."""
+        if not self.alive:
+            return
         self.alive = False
-        self.respawn_timer = RESPAWN_TIME
+        self.health = 0
+        self.respawn_timer = PLAYER_RESPAWN_TIME
+        self.vel_x = 0
+        if self.on_health_changed:
+            self.on_health_changed(self.player_id, 0)
 
-    def respawn(self):
-        """Respawn player at starting position."""
-        self.health = MAX_HEALTH
+    def respawn(self, x=None, y=None):
+        """Respawn."""
         self.alive = True
-        self.velocity_x = 0
-        self.velocity_y = 0
-        # Reset position (would be set by game_manager)
-        if self.health_changed_callback:
-            self.health_changed_callback(self.player_id, self.health)
+        self.health = PLAYER_MAX_HEALTH
+        self.vel_x = 0
+        self.vel_y = 0
+        self.invulnerable = True
+        self.invuln_timer = PLAYER_INVULN_TIME
+
+        if x is not None and y is not None:
+            self.rect.x = x
+            self.rect.y = y
+
+        self.jumps_remaining = 2 if PLAYER_DOUBLE_JUMP else 1
+
+        if self.on_health_changed:
+            self.on_health_changed(self.player_id, self.health)
+
+    # ═══════════════════════════════════════════════════
+    # RENDERING
+    # ═══════════════════════════════════════════════════
 
     def draw(self, screen):
-        """Draw the player with retro sprite."""
-        if self.alive:
-            # Flip sprite based on direction
-            if self.velocity_x < 0 and self.facing_right:
-                self.facing_right = False
-            elif self.velocity_x > 0 and not self.facing_right:
-                self.facing_right = True
+        """Draw player with AI-generated image or fallback."""
+        if not self.alive:
+            self._draw_dead(screen)
+            return
 
-            sprite_to_draw = self.sprite if self.facing_right else pygame.transform.flip(self.sprite, True, False)
-            screen.blit(sprite_to_draw, self.rect)
+        # Determine color with effects
+        if self.hit_flash_timer > 0:
+            color = WHITE
+        elif self.invulnerable:
+            if int(self.invuln_timer * 12) % 2 == 0:
+                color = self.color
+            else:
+                color = tuple(min(255, c + 80) for c in self.color)
+        else:
+            color = self.color
 
-            # Draw pixel shadow beneath player
-            shadow_rect = pygame.Rect(self.rect.x + 5, self.rect.bottom - 3, self.rect.width - 10, 3)
-            shadow_surface = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
-            shadow_surface.fill((0, 0, 0, 100))
-            screen.blit(shadow_surface, shadow_rect)
+        # Use AI-generated character image if available
+        if self.character_image:
+            # Scale and flip AI image
+            char_img = self.character_image
+            if not self.facing_right:
+                char_img = pygame.transform.flip(char_img, True, False)
+
+            # Scale to player size
+            char_img = pygame.transform.scale(char_img, (PLAYER_WIDTH, PLAYER_HEIGHT))
+
+            # Apply color tint if hit/invulnerable
+            if self.hit_flash_timer > 0 or self.invulnerable:
+                # Create tinted version
+                tinted = char_img.copy()
+                tinted.fill(color + (100,), special_flags=pygame.BLEND_ADD)
+                screen.blit(tinted, self.rect)
+            else:
+                screen.blit(char_img, self.rect)
+        else:
+            # Fallback: draw simple rectangle
+            pygame.draw.rect(screen, color, self.rect, border_radius=6)
+            pygame.draw.rect(screen, WHITE, self.rect, 2, border_radius=6)
+            self._draw_face(screen, color)
+
+        # Draw attack with weapon image
+        if self.attack_state != self.ATTACK_NONE:
+            self._draw_attack(screen)
+
+        # Draw health bar
+        self._draw_health_bar(screen)
+
+        # Draw player ID
+        self._draw_player_id(screen)
+
+    def _draw_dead(self, screen):
+        """Draw death."""
+        ghost_color = tuple(c // 4 for c in self.color)
+        pygame.draw.circle(screen, ghost_color, self.rect.center, PLAYER_WIDTH // 2)
+
+        center = self.rect.center
+        pygame.draw.line(screen, LIGHT_GRAY,
+                        (center[0] - 12, center[1] - 3),
+                        (center[0] - 6, center[1] + 3), 2)
+        pygame.draw.line(screen, LIGHT_GRAY,
+                        (center[0] - 12, center[1] + 3),
+                        (center[0] - 6, center[1] - 3), 2)
+        pygame.draw.line(screen, LIGHT_GRAY,
+                        (center[0] + 6, center[1] - 3),
+                        (center[0] + 12, center[1] + 3), 2)
+        pygame.draw.line(screen, LIGHT_GRAY,
+                        (center[0] + 6, center[1] + 3),
+                        (center[0] + 12, center[1] - 3), 2)
+
+    def _draw_face(self, screen, color):
+        """Draw face."""
+        eye_y = self.rect.y + PLAYER_HEIGHT // 3
+        eye_left_x = self.rect.x + 12
+        eye_right_x = self.rect.right - 12
+
+        if self.facing_right:
+            eye_left_x += 2
+            eye_right_x += 2
+        else:
+            eye_left_x -= 2
+            eye_right_x -= 2
+
+        eye_color = BLACK if self.hit_flash_timer <= 0 else color
+        pygame.draw.circle(screen, eye_color, (eye_left_x, eye_y), 3)
+        pygame.draw.circle(screen, eye_color, (eye_right_x, eye_y), 3)
+
+    def _draw_attack(self, screen):
+        """Draw attack animation with weapon image."""
+        if self.attack_hitbox:
+            # Use AI-generated weapon image if available
+            if self.weapon_image:
+                weapon_img = self.weapon_image
+
+                # Scale weapon image
+                weapon_img = pygame.transform.scale(weapon_img,
+                                                    (self.attack_hitbox.width,
+                                                     self.attack_hitbox.height))
+
+                # Flip if attacking left
+                if not self.facing_right:
+                    weapon_img = pygame.transform.flip(weapon_img, True, False)
+
+                # Add glow effect
+                glow_surface = pygame.Surface((self.attack_hitbox.width,
+                                              self.attack_hitbox.height),
+                                             pygame.SRCALPHA)
+                glow_surface.fill((*self.color, 100))
+                screen.blit(glow_surface, self.attack_hitbox)
+
+                # Draw weapon image
+                screen.blit(weapon_img, self.attack_hitbox)
+            else:
+                # Fallback: semi-transparent attack arc
+                attack_surface = pygame.Surface((self.attack_hitbox.width,
+                                                self.attack_hitbox.height),
+                                               pygame.SRCALPHA)
+
+                if self.attack_state == self.ATTACK_SWING:
+                    # Draw swing arc
+                    arc_color = (*self.color, 150)
+                    pygame.draw.ellipse(attack_surface, arc_color,
+                                      attack_surface.get_rect(), 3)
+                else:
+                    # Draw thrust
+                    thrust_color = (*self.color, 120)
+                    pygame.draw.rect(attack_surface, thrust_color,
+                                   attack_surface.get_rect())
+
+                screen.blit(attack_surface, self.attack_hitbox)
+
+    def _draw_health_bar(self, screen):
+        """Draw health bar."""
+        bar_width = PLAYER_WIDTH
+        bar_height = 5
+        bar_x = self.rect.x
+        bar_y = self.rect.y - 10
+
+        pygame.draw.rect(screen, DARK_GRAY, (bar_x, bar_y, bar_width, bar_height))
+
+        health_percent = self.health / self.max_health
+        fill_width = int(bar_width * health_percent)
+
+        if health_percent > 0.6:
+            bar_color = SUCCESS_GREEN
+        elif health_percent > 0.3:
+            bar_color = WARNING_YELLOW
+        else:
+            bar_color = DANGER_RED
+
+        if fill_width > 0:
+            pygame.draw.rect(screen, bar_color, (bar_x, bar_y, fill_width, bar_height))
+
+        pygame.draw.rect(screen, WHITE, (bar_x, bar_y, bar_width, bar_height), 1)
+
+    def _draw_player_id(self, screen):
+        """Draw player ID."""
+        font = pygame.font.Font(None, 16)
+        id_text = font.render(f"P{self.player_id + 1}", True, WHITE)
+        text_rect = id_text.get_rect(center=(self.rect.centerx, self.rect.bottom + 8))
+
+        badge_rect = text_rect.inflate(6, 3)
+        pygame.draw.rect(screen, self.color, badge_rect, border_radius=3)
+        pygame.draw.rect(screen, WHITE, badge_rect, 1, border_radius=3)
+
+        screen.blit(id_text, text_rect)

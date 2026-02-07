@@ -33,28 +33,49 @@ class Weapon:
         self.size = weapon_data.get('size', 30)
         self.speed = weapon_data.get('speed', 3)
         self.color = weapon_data.get('color', YELLOW)
+        self.gravity_affected = weapon_data.get('gravity_affected', False)
+        self.lifetime = weapon_data.get('lifetime', 5.0)
         self.owner_id = owner_id
 
         self.rect = pygame.Rect(x, y, self.size, self.size)
         self.velocity_x = self.speed
         self.velocity_y = 0
         self.active = True
+        self.time_alive = 0
 
-        # Create retro weapon sprite
-        self.sprite = create_retro_weapon_sprite(self.name, self.color, self.size)
+        # Visual
         self.rotation = 0
+        self.has_hit = False
+
+    def set_direction(self, direction_x):
+        """Set weapon travel direction (-1 for left, 1 for right)."""
+        self.velocity_x = self.speed * direction_x
 
     def update(self, dt):
         """Update weapon position and physics."""
         if not self.active:
             return
 
+        self.time_alive += dt
+
+        # Check lifetime
+        if self.time_alive >= self.lifetime:
+            self.active = False
+            return
+
         # Move weapon
         self.rect.x += self.velocity_x
         self.rect.y += self.velocity_y
 
-        # Apply gravity (if weapon falls)
-        self.velocity_y += GRAVITY * 0.5
+        # Apply gravity if affected
+        if self.gravity_affected:
+            if hasattr(settings, 'GRAVITY_STRENGTH'):
+                self.velocity_y += settings.GRAVITY_STRENGTH
+            else:
+                self.velocity_y += GRAVITY * 0.5
+
+        # Rotation for visual effect
+        self.rotation += 5
 
         # Deactivate if off screen
         if (self.rect.right < 0 or self.rect.left > SCREEN_WIDTH or
@@ -89,16 +110,33 @@ class Weapon:
         return False
 
     def draw(self, screen):
-        """Draw the weapon with retro sprite."""
+        """Draw the weapon with effects."""
         if self.active:
-            # Rotate sprite for effect
-            self.rotation += 5
-            rotated_sprite = pygame.transform.rotate(self.sprite, self.rotation)
-            rotated_rect = rotated_sprite.get_rect(center=self.rect.center)
-            screen.blit(rotated_sprite, rotated_rect)
+            # Draw glow effect
+            glow_size = int(self.size * 1.4)
+            glow_surface = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surface, (*self.color, 60),
+                             (glow_size // 2, glow_size // 2), glow_size // 2)
+            glow_rect = glow_surface.get_rect(center=self.rect.center)
+            screen.blit(glow_surface, glow_rect)
 
-            # Pixel trail effect
-            trail_rect = pygame.Rect(self.rect.x - 5, self.rect.centery - 2, 5, 4)
-            trail_surface = pygame.Surface(trail_rect.size, pygame.SRCALPHA)
-            trail_surface.fill((*self.color, 100))
-            screen.blit(trail_surface, trail_rect)
+            # Draw main projectile
+            pygame.draw.circle(screen, self.color, self.rect.center, self.size // 2)
+            pygame.draw.circle(screen, WHITE, self.rect.center, self.size // 2, 2)
+
+            # Draw inner glow
+            inner_color = tuple(min(255, c + 100) for c in self.color)
+            pygame.draw.circle(screen, inner_color, self.rect.center, self.size // 4)
+
+            # Draw trail
+            trail_length = 15
+            trail_surface = pygame.Surface((trail_length, self.size // 2), pygame.SRCALPHA)
+            for i in range(trail_length):
+                alpha = int(100 * (1 - i / trail_length))
+                if self.velocity_x > 0:
+                    trail_x = self.rect.left - i
+                else:
+                    trail_x = self.rect.right + i
+                pygame.draw.line(screen, (*self.color, alpha),
+                               (trail_x, self.rect.centery),
+                               (trail_x, self.rect.centery), 2)

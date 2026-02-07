@@ -83,6 +83,26 @@ class GameManager:
         for player in self.players:
             player.update(PLATFORMS, dt)
 
+        # Check player melee attacks
+        for i, attacker in enumerate(self.players):
+            if not attacker.alive:
+                continue
+
+            attack_hitbox = attacker.get_attack_hitbox()
+            if attack_hitbox:
+                for defender in self.players:
+                    if defender.player_id == attacker.player_id or not defender.alive:
+                        continue
+
+                    if attack_hitbox.colliderect(defender.rect):
+                        # Calculate knockback
+                        knockback_dir = 1 if attacker.facing_right else -1
+                        knockback_x = knockback_dir * 12
+                        knockback_y = -6
+
+                        # Apply damage
+                        defender.take_damage(15, knockback_x, knockback_y)
+
         # Update all weapons
         for weapon in self.weapons[:]:
             weapon.update(dt)
