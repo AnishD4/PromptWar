@@ -315,55 +315,49 @@ class Player:
     # ═══════════════════════════════════════════════════
 
     def draw(self, screen):
-        """Draw player with AI-generated image or fallback."""
-        if not self.alive:
-            self._draw_dead(screen)
-            return
+        """Draw the player with retro sprite."""
+        if self.alive:
+            # Flip sprite based on direction
+            if self.vel_x < 0 and self.facing_right:
+                self.facing_right = False
+            elif self.vel_x > 0 and not self.facing_right:
+                self.facing_right = True
 
-        # Determine color with effects
-        if self.hit_flash_timer > 0:
-            color = WHITE
-        elif self.invulnerable:
-            if int(self.invuln_timer * 12) % 2 == 0:
-                color = self.color
-            else:
-                color = tuple(min(255, c + 80) for c in self.color)
-        else:
-            color = self.color
+            sprite_to_draw = self.sprite if self.facing_right else pygame.transform.flip(self.sprite, True, False)
+            screen.blit(sprite_to_draw, self.rect)
 
-        # Use AI-generated character image if available
-        if self.character_image:
-            # Scale and flip AI image
-            char_img = self.character_image
-            if not self.facing_right:
-                char_img = pygame.transform.flip(char_img, True, False)
+            # Draw equipped weapon attached to the player hand (stable, flipped with player)
+            if hasattr(self, 'equipped_weapon') and self.equipped_weapon:
+                w = self.equipped_weapon
+                # Place weapon near hand
+                hand_x = self.rect.centerx + (self.rect.width // 4 if self.facing_right else -self.rect.width // 4)
+                hand_y = self.rect.centery
 
-            # Scale to player size
-            char_img = pygame.transform.scale(char_img, (PLAYER_WIDTH, PLAYER_HEIGHT))
+                # Get weapon surface and scale/flip for facing
+                surf = w.get_surface()
+                if not self.facing_right:
+                    try:
+                        surf = pygame.transform.flip(surf, True, False)
+                    except Exception:
+                        pass
 
-            # Apply color tint if hit/invulnerable
-            if self.hit_flash_timer > 0 or self.invulnerable:
-                # Create tinted version
-                tinted = char_img.copy()
-                tinted.fill(color + (100,), special_flags=pygame.BLEND_ADD)
-                screen.blit(tinted, self.rect)
-            else:
-                screen.blit(char_img, self.rect)
-        else:
-            # Fallback: draw simple rectangle
-            pygame.draw.rect(screen, color, self.rect, border_radius=6)
-            pygame.draw.rect(screen, WHITE, self.rect, 2, border_radius=6)
-            self._draw_face(screen, color)
+                # Scale surface to weapon size if needed
+                try:
+                    surf = pygame.transform.smoothscale(surf, (w.size, w.size))
+                except Exception:
+                    pass
 
-        # Draw attack with weapon image
-        if self.attack_state != self.ATTACK_NONE:
-            self._draw_attack(screen)
+                surf_rect = surf.get_rect(center=(hand_x, hand_y))
+                screen.blit(surf, surf_rect)
 
-        # Draw health bar
-        self._draw_health_bar(screen)
+                # Keep weapon rect in sync (useful for collisions/debug)
+                w.rect = surf_rect
 
-        # Draw player ID
-        self._draw_player_id(screen)
+            # Draw pixel shadow beneath player
+            shadow_rect = pygame.Rect(self.rect.x + 5, self.rect.bottom - 3, self.rect.width - 10, 3)
+            shadow_surface = pygame.Surface(shadow_rect.size, pygame.SRCALPHA)
+            shadow_surface.fill((0, 0, 0, 100))
+            screen.blit(shadow_surface, shadow_rect)
 
     def _draw_dead(self, screen):
         """Draw death."""

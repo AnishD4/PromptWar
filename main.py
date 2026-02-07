@@ -44,7 +44,7 @@ def show_menu(screen):
 def run_game(room_info=None):
     """Run the main game."""
     # Initialize platforms BEFORE creating game objects
-    settings.PLATFORMS = get_platforms()
+    settings.PLATFORMS = settings.get_platforms()
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("PROMPT WARS - Retro Edition")
@@ -80,12 +80,18 @@ def run_game(room_info=None):
 
     # Connect AI weapon spawned events to UI
     def on_weapon_spawned(weapon_data, player_id):
-        player = game_manager.players[player_id]
-        spawn_x = player.rect.centerx
-        spawn_y = player.rect.centery
-        weapon = Weapon(weapon_data, player_id, spawn_x, spawn_y)
-        game_manager.add_weapon(weapon)
-        ui.weapon_spawned(weapon_data['name'], player_id)
+        # Attach forged weapon visually to the player (equip)
+        if player_id < len(game_manager.players):
+            player = game_manager.players[player_id]
+            spawn_x = player.rect.centerx
+            spawn_y = player.rect.centery
+            weapon = Weapon(weapon_data, player_id, spawn_x, spawn_y)
+            try:
+                player.equip_weapon(weapon)
+            except Exception:
+                # Fallback: add to game world if equip fails
+                game_manager.add_weapon(weapon)
+        ui.weapon_spawned(weapon_data.get('name', 'Unknown'), player_id)
 
     ai_client.set_weapon_spawned_callback(on_weapon_spawned)
 
@@ -122,7 +128,11 @@ def run_game(room_info=None):
             elif keys[pygame.K_d]:
                 p0.move(1)
             else:
-                p0.velocity_x = 0
+                # align with Player API: vel_x
+                try:
+                    p0.vel_x = 0
+                except Exception:
+                    p0.velocity_x = 0
             if keys[pygame.K_w]:
                 p0.jump()
 
@@ -133,7 +143,10 @@ def run_game(room_info=None):
             elif keys[pygame.K_RIGHT]:
                 p1.move(1)
             else:
-                p1.velocity_x = 0
+                try:
+                    p1.vel_x = 0
+                except Exception:
+                    p1.velocity_x = 0
             if keys[pygame.K_UP]:
                 p1.jump()
 
