@@ -1,0 +1,4 @@
+# Prompt Wars - Python Dependencies
+
+# Core game engine
+pygame>=2.5.0
