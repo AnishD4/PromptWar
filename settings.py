@@ -2,10 +2,11 @@
 # Global settings and constants for Prompt Wars
 import pygame
 
-# Screen settings
+# Screen settings - Resizable window
 SCREEN_WIDTH = 1280
 SCREEN_HEIGHT = 720
 FPS = 60
+FULLSCREEN = False  # Start in windowed mode
 
 # Colors
 WHITE = (255, 255, 255)
@@ -44,22 +45,20 @@ INPUT_BOX_HEIGHT = 40
 # Weapon settings
 WEAPON_COOLDOWN = 5  # seconds between weapon forges
 
-# Platform definitions - created after pygame init
-def get_platforms():
-    """Return list of platform rectangles."""
-    import pygame
-    return [
-        pygame.Rect(200, 500, 300, 30),
-        pygame.Rect(700, 500, 300, 30),
-        pygame.Rect(450, 350, 200, 30),
-        pygame.Rect(100, 250, 150, 30),
-        pygame.Rect(900, 250, 150, 30),
-    ]
+# Audio settings
+AUDIO_ICON_SIZE = 50  # Larger for better visibility
+AUDIO_BUTTON_POS = (20, 100)  # Position for audio button
 
+# Fullscreen button settings
+FULLSCREEN_BUTTON_POS = (20, 160)  # Below audio button
+FULLSCREEN_BUTTON_SIZE = 50
+
+# Platform definitions - FIXED positions that match your background
+# These are the exact coordinates you set in the platform editor
 PLATFORMS = [
     pygame.Rect(291, 468, 835, 46),
     pygame.Rect(1122, 494, 116, 16),
     pygame.Rect(1128, 476, 62, 18),
     pygame.Rect(150, 491, 139, 20),
     pygame.Rect(213, 472, 76, 17),
-] # Will be initialized in main.py
+]
