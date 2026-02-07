@@ -131,17 +131,24 @@ class GameServer:
             # Host is starting the game - broadcast to all players in room
             room_code = message['room_code']
             if room_code in self.rooms:
-                for player_conn in self.rooms[room_code]['players']:
-                    if player_conn != conn:  # Don't send to host
-                        try:
-                            start_msg = {
-                                'type': 'game_starting',
-                                'room_code': room_code
-                            }
-                            player_conn.send(pickle.dumps(start_msg))
-                        except:
-                            pass
-                return {'status': 'ok'}
+                # First, send confirmation to host
+                print(f"✓ Starting game in room {room_code}")
+
+                # Broadcast to ALL players including host
+                for i, player_conn in enumerate(self.rooms[room_code]['players']):
+                    try:
+                        start_msg = {
+                            'type': 'game_starting',
+                            'room_code': room_code
+                        }
+                        player_conn.send(pickle.dumps(start_msg))
+                        print(f"✓ Sent game_starting to player {i}")
+                    except Exception as e:
+                        print(f"✗ Failed to send to player {i}: {e}")
+
+                # Return success to the requesting host
+                return {'status': 'success', 'message': 'game_starting'}
+            return {'status': 'error', 'message': 'Room not found'}
 
         elif msg_type == 'update':
             room_code = message['room_code']

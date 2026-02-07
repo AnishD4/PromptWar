@@ -127,7 +127,8 @@ class LobbyScreen:
                     # Send start game signal to server
                     print("✓ Host sending start game signal...")
                     self.network_client.send_start_game()
-                    return "START"
+                    # Don't return START immediately - wait for server to broadcast game_starting
+                    return None
                 else:
                     self.show_error("Need at least 2 players to start")
                     return None
