@@ -246,25 +246,15 @@ class GameClient:
             return False
 
     def get_lobby_info(self):
-        """Get current lobby information."""
+        """Get current lobby information - non-blocking version."""
+        if not self.connected or not self.room_code:
+            return None
+
         try:
             message = {'type': 'get_lobby', 'room_code': self.room_code}
             self.client_socket.send(pickle.dumps(message))
-
-            # Wait for response with timeout
-            start_time = time.time()
-            while time.time() - start_time < 3.0:
-                with self.response_lock:
-                    if self.pending_response and self.pending_response.get('type') == 'get_lobby_response':
-                        response = self.pending_response
-                        self.pending_response = None
-
-                        if response['status'] == 'success':
-                            self.lobby_players = response['players']
-                            return response
-                        return None
-                time.sleep(0.05)
-            return None
+            # Don't wait for response - it will be processed by receive thread
+            return True
         except Exception as e:
             print(f"Get lobby error: {e}")
             return None
@@ -303,6 +293,11 @@ class GameClient:
                     else:
                         # Store response for pending requests
                         with self.response_lock:
+                            # Check if this is a lobby info response
+                            if message.get('status') == 'success' and 'player_count' in message:
+                                # Update lobby players from get_lobby response
+                                self.lobby_players = message.get('players', [])
+
                             # Tag the response type for easier matching
                             if message.get('status') in ['success', 'error']:
                                 # This is a response to a request

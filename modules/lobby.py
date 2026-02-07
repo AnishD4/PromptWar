@@ -64,8 +64,15 @@ class LobbyScreen:
         self.last_update += dt
 
         # Poll lobby status every 0.5 seconds
-        if self.last_update >= 0.5 and self.is_host:
+        if self.last_update >= 0.5:
             self.last_update = 0
+            # Refresh lobby info to keep connection alive
+            if self.network_client and self.network_client.connected:
+                try:
+                    # Send keep-alive by requesting lobby info
+                    self.network_client.get_lobby_info()
+                except:
+                    pass
 
         # Update error timer
         if self.error_timer > 0:
@@ -342,4 +349,3 @@ class Button:
                 self.click_animation = 1.0
                 return True
         return False
-
