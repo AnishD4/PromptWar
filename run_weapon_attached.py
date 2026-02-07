@@ -17,6 +17,7 @@ from modules.ai_client import AIClient
 from settings import *
 
 DEBUG = True
+SHOW_DEBUG_BG = True
 
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -24,10 +25,14 @@ clock = pygame.time.Clock()
 pygame.display.set_caption('Weapon Attached Demo')
 
 print("Weapon attached demo starting. If you don't see a window, ensure it's not minimized or behind other windows.")
-print("Rendering will also save a screenshot every second to debug_screenshot.png in the project root.")
 
 # Create a player near center
-player = Player(0, SCREEN_WIDTH // 3, SCREEN_HEIGHT // 2, BLUE)
+# We'll place a ground platform and put the player on it
+platform_y = SCREEN_HEIGHT // 2 + 80
+platform = pygame.Rect(SCREEN_WIDTH//3 - 150, platform_y, 300, 20)
+platforms = [platform]
+
+player = Player(0, platform.x + 60, platform.y - PLAYER_HEIGHT, BLUE)
 
 # Create a sample weapon (will be attached to player)
 weapon_data = {
@@ -88,7 +93,7 @@ while running:
         player.jump()
 
     # Update player physics (no platforms for demo)
-    player.update([], dt)
+    player.update(platforms, dt)
 
     # Attach weapon to player hand
     if weapon_attached:
@@ -102,11 +107,17 @@ while running:
     # Draw
     screen.fill((30, 40, 30))  # dark background so sprites pop
 
-    # draw player and weapon
+    if SHOW_DEBUG_BG:
+        dbg_rect = pygame.Rect(SCREEN_WIDTH//2 - 220, SCREEN_HEIGHT//2 - 140, 440, 280)
+        pygame.draw.rect(screen, (20, 20, 20), dbg_rect)
+        pygame.draw.rect(screen, (80, 80, 80), dbg_rect, 2)
+
+    # draw player (which will draw equipped weapon if any)
     player.draw(screen)
-    # Only draw standalone placeholder if player has no equipped weapon
-    if not hasattr(player, 'equipped_weapon') or not player.equipped_weapon:
-        weapon.draw(screen)
+
+    # Draw platform
+    pygame.draw.rect(screen, (100, 100, 100), platform)
+    pygame.draw.rect(screen, WHITE, platform, 2)
 
     # Extra visible marker for the weapon center (helps when sprite is small/transparent)
     marker_color = (255, 50, 50)
@@ -141,11 +152,7 @@ while running:
         print(f'FPS={int(clock.get_fps())} Player=({player.rect.x},{player.rect.y}) Weapon=({weapon.rect.x},{weapon.rect.y})')
         # Save screenshot once per second
         if now - last_screenshot_time >= 1.0:
-            try:
-                pygame.image.save(screen, 'debug_screenshot.png')
-                print('Saved debug_screenshot.png')
-            except Exception as e:
-                print('Failed to save screenshot:', e)
+
             last_screenshot_time = now
 
 pygame.quit()

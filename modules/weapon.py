@@ -47,6 +47,11 @@ class Weapon:
         self.rotation = 0
         self.has_hit = False
 
+        # Optionally track where AI image bytes were saved (for debugging)
+        self.saved_path = weapon_data.get('saved_path') if isinstance(weapon_data, dict) else None
+        # Store AI-provided image surface if present
+        self.image = weapon_data.get('image') if isinstance(weapon_data, dict) else None
+
     def set_direction(self, direction_x):
         """Set weapon travel direction (-1 for left, 1 for right)."""
         self.velocity_x = self.speed * direction_x
@@ -112,6 +117,15 @@ class Weapon:
     def draw(self, screen):
         """Draw the weapon with effects."""
         if self.active:
+            # If this weapon has an AI image, draw that instead of projectile graphics
+            try:
+                surf = self.get_surface()
+                if surf:
+                    rect = surf.get_rect(center=self.rect.center)
+                    screen.blit(surf, rect)
+                    return
+            except Exception:
+                pass
             # Draw glow effect
             glow_size = int(self.size * 1.4)
             glow_surface = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
@@ -140,3 +154,33 @@ class Weapon:
                 pygame.draw.line(screen, (*self.color, alpha),
                                (trail_x, self.rect.centery),
                                (trail_x, self.rect.centery), 2)
+
+    def get_surface(self, desired_size=None):
+        """Return a pygame.Surface for this weapon: AI image if present, else generated sprite.
+
+        desired_size: optional (w,h) or single int for square.
+        """
+        # If AI supplied an image surface, return a copy (scaled if requested)
+        if getattr(self, 'image', None):
+            try:
+                surf = self.image
+                if desired_size:
+                    if isinstance(desired_size, int):
+                        size = (desired_size, desired_size)
+                    else:
+                        size = desired_size
+                    return pygame.transform.smoothscale(surf, size)
+                return surf
+            except Exception:
+                pass
+
+        # Fallback: generated retro sprite
+        try:
+            sprite = create_retro_weapon_sprite(self.name or 'weapon', self.color, size=self.size)
+            return sprite
+        except Exception:
+            # Very basic fallback
+            s = pygame.Surface((self.size, self.size), pygame.SRCALPHA)
+            pygame.draw.circle(s, self.color, (self.size//2, self.size//2), self.size//2)
+            return s
+

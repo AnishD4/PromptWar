@@ -152,11 +152,11 @@ class AIClient:
                     'content': (
                         f"Make this prompt very specific for a weapon image: {prompt}. "
                         "Output a concise, detailed image prompt suitable for an image-generation model. "
-                        "Important constraints: produce a single square PNG with a TRANSPARENT BACKGROUND, "
-                        "in RETRO PIXEL-ART style (pixelated, limited palette), suitable for a 2D game sprite/icon. "
+                        "IMPORTANT: The image must depict ONLY a WEAPON (no characters, no scenes), centered and isolated. "
+                        "Produce a single square PNG with a TRANSPARENT BACKGROUND, in RETRO PIXEL-ART style (pixelated, limited palette), suitable for a 2D game SPRITE/ICON. "
                         "Ensure the weapon is FULLY VISIBLE and clearly readable at small icon sizes. "
                         "This is an in-game icon; center the weapon, prioritize silhouette and visibility, no text. "
-                        "Return only the prompt text for image generation."
+                        "Return only the prompt text for image generation (do not include explanations)."
                     )
                 }
             ]
@@ -295,27 +295,36 @@ class AIClient:
         except Exception:
             bg_has_alpha = False
 
-        if self.removebg_key:
-            try:
-                r = self._post_with_retries(
-                    'https://api.remove.bg/v1.0/removebg',
-                    files={'image_file': io.BytesIO(image_bytes)},
-                    data={'size': 'auto'},
-                    headers={'X-Api-Key': self.removebg_key},
-                    timeout=30
-                )
-                if r.status_code == 200:
-                    final_bytes = r.content
-                    bg_removed = True
-                else:
-                    print('remove.bg failed:', r.status_code, r.text)
-                    # if original image already has alpha, consider background effectively removed
-                    if bg_has_alpha:
+        if self.removebg_key and not bg_has_alpha:
+            # Use a filename + content-type when posting to remove.bg
+            remove_attempts = 2
+            for attempt in range(remove_attempts):
+                try:
+                    files = {
+                        'image_file': ('ai_image.png', io.BytesIO(image_bytes), 'image/png')
+                    }
+                    r = self._post_with_retries(
+                        'https://api.remove.bg/v1.0/removebg',
+                        files=files,
+                        data={'size': 'auto'},
+                        headers={'X-Api-Key': self.removebg_key},
+                        timeout=30
+                    )
+                    if r.status_code == 200:
+                        final_bytes = r.content
                         bg_removed = True
-            except Exception as e:
-                print('remove.bg call failed:', e)
-                if bg_has_alpha:
-                    bg_removed = True
+                        break
+                    else:
+                        # If remove.bg says invalid file type, stop retrying
+                        print('remove.bg failed:', r.status_code, r.text)
+                        if r.status_code in (400, 415):
+                            break
+                except Exception as e:
+                    print('remove.bg call failed (attempt', attempt + 1, '):', e)
+                    time.sleep(1.5 * (attempt + 1))
+            # If remove.bg failed but original had alpha, consider background removed
+            if not bg_removed and bg_has_alpha:
+                bg_removed = True
 
         # Save the final bytes to disk for inspection
         saved_path = None

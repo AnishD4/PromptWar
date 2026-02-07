@@ -77,19 +77,11 @@ def show_lobby(screen, audio_manager, network_client, room_name, is_host):
 
             result = lobby.handle_event(event)
             if result == "START":
-                # Host is starting the game - broadcast to all players
-                if is_host and network_client:
-                    network_client.send_start_game()
                 return "START"
             elif result == "CANCEL" or result == "LEAVE":
                 return "CANCEL"
 
-        # Check for updates from lobby (including game start signal for guests)
-        result = lobby.update(dt)
-        if result == "START":
-            # Guest received start signal from host
-            return "START"
-
+        lobby.update(dt)
         lobby.draw()
 
         # Draw audio button
@@ -159,20 +151,24 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
         game_manager.add_player(player)
 
     # Connect AI weapon spawned events to UI
+    forged_players = set()
+
     def on_weapon_spawned(weapon_data, player_id):
+        # Attach forged weapon visually to the player (equip)
         if player_id < len(game_manager.players):
             player = game_manager.players[player_id]
             spawn_x = player.rect.centerx
             spawn_y = player.rect.centery
             weapon = Weapon(weapon_data, player_id, spawn_x, spawn_y)
-
-            # Set weapon direction based on player facing
-            if hasattr(player, 'facing_right'):
-                direction = 1 if player.facing_right else -1
-                weapon.set_direction(direction)
-
-            game_manager.add_weapon(weapon)
-            ui.weapon_spawned(weapon_data['name'], player_id)
+            try:
+                # equip to player (visual)
+                player.equip_weapon(weapon)
+                forged_players.add(player_id)
+            except Exception:
+                # Fallback: add to game world if equip fails
+                game_manager.add_weapon(weapon)
+                forged_players.add(player_id)
+        ui.weapon_spawned(weapon_data.get('name', 'Unknown'), player_id)
 
     ai_client.set_weapon_spawned_callback(on_weapon_spawned)
 
@@ -180,6 +176,48 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
         ai_client.forge_weapon(prompt, player_id)
 
     ui.set_forge_weapon_callback(on_forge_weapon)
+
+    # PRE-GAME: wait for all players to forge weapons (20s timeout)
+    wait_seconds = 20.0
+    wait_start = pygame.time.get_ticks() / 1000.0
+    num_players = len(game_manager.players)
+    ui.add_notification('Waiting for players to forge weapons...', 5.0, (0, 255, 255))
+    # Simple blocking wait loop that still processes UI events so players can type prompts
+    waiting = True
+    while waiting:
+        dt = clock.tick(FPS) / 1000.0
+        now = pygame.time.get_ticks() / 1000.0
+        elapsed = now - wait_start
+        remaining = max(0.0, wait_seconds - elapsed)
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return "QUIT"
+            # allow UI to handle input events (forge)
+            ui.handle_event(event, 0)
+
+        ui.update(dt)
+
+        # Draw a waiting screen
+        screen.blit(background, (0, 0))
+        game_manager.draw_players(screen)
+        ui.draw(screen)
+        # draw countdown
+        countdown_text = ui.small_font.render(f"Forge weapons: {int(remaining)}s", True, (255, 200, 0))
+        screen.blit(countdown_text, (SCREEN_WIDTH // 2 - 80, 20))
+        pygame.display.flip()
+
+        # Check if all players forged
+        if len(forged_players) >= num_players:
+            waiting = False
+            break
+
+        if remaining <= 0.0:
+            ui.add_notification('Timeout: not all players forged weapons. Closing...', 3.0, (255, 0, 0))
+            pygame.time.delay(1500)
+            return "QUIT"
+
+    # Start the round once all players have forged
     game_manager.start_round()
 
     # Game loop

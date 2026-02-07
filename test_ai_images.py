@@ -22,7 +22,7 @@ pygame.init()
 prompts = [
     "flaming sword",
     "icy spear",
-    "giant hammer"
+    "giant Tiger"
 ]
 
 ai = AIClient()

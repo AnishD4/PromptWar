@@ -349,6 +349,32 @@ class Player:
         if self.on_health_changed:
             self.on_health_changed(self.player_id, self.health)
 
+    def equip_weapon(self, weapon):
+        """Attach a Weapon object to this player (visual and ownership)."""
+        try:
+            self.equipped_weapon = weapon
+            weapon.attached = True
+            weapon.owner_id = self.player_id
+            # position weapon at hand immediately
+            hand_x = self.rect.centerx + (self.rect.width // 4 if self.facing_right else -self.rect.width // 4)
+            hand_y = self.rect.centery
+            weapon.rect = weapon.get_surface().get_rect(center=(hand_x, hand_y))
+        except Exception:
+            self.equipped_weapon = weapon
+
+    def unequip_weapon(self):
+        """Detach the current equipped weapon and return it (or None)."""
+        if hasattr(self, 'equipped_weapon') and self.equipped_weapon:
+            try:
+                w = self.equipped_weapon
+                w.attached = False
+                w.owner_id = None
+            except Exception:
+                pass
+            self.equipped_weapon = None
+            return w
+        return None
+
     # ═══════════════════════════════════════════════════
     # RENDERING
     # ═══════════════════════════════════════════════════
