@@ -57,6 +57,11 @@ ai = AIClient()
 def _on_spawn(weapon_data, player_id):
     # create and equip
     w = Weapon(weapon_data, player_id, player.rect.centerx, player.rect.centery)
+    # Make the weapon larger for visibility in the demo
+    try:
+        w.size = int(w.size * 1.6)
+    except Exception:
+        pass
     player.equip_weapon(w)
     print('AI spawned weapon:', weapon_data.get('name'))
 
@@ -118,13 +123,6 @@ while running:
     # Draw platform
     pygame.draw.rect(screen, (100, 100, 100), platform)
     pygame.draw.rect(screen, WHITE, platform, 2)
-
-    # Extra visible marker for the weapon center (helps when sprite is small/transparent)
-    marker_color = (255, 50, 50)
-    pygame.draw.circle(screen, marker_color, weapon.rect.center, 4)
-    # Label above weapon
-    label = font.render('WEAPON', True, marker_color)
-    screen.blit(label, (weapon.rect.centerx - label.get_width()//2, weapon.rect.top - 18))
 
     # Debug overlays
     if DEBUG:

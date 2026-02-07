@@ -4,6 +4,7 @@
 import pygame
 import sys
 import time
+import os
 import settings
 from settings import *
 from modules.player import Player
@@ -430,10 +431,55 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
     return "QUIT"
 
 
+def run_ai_test_mode():
+    """Run a quick AI image test (same as test_ai_images.py) and exit."""
+    pygame.init()
+    prompts = ["flaming sword", "icy spear", "giant Tiger"]
+    ai = AIClient()
+    results = []
+
+    def _cb(weapon_data, player_id):
+        has_image = 'image' in weapon_data and weapon_data['image'] is not None
+        size = None
+        path = None
+        bg_removed = weapon_data.get('bg_removed') if isinstance(weapon_data, dict) else None
+        bg_has_alpha = weapon_data.get('bg_has_alpha') if isinstance(weapon_data, dict) else None
+        if has_image:
+            surf = weapon_data['image']
+            try:
+                size = surf.get_size()
+                fname = f"ai_image_{player_id}_{weapon_data.get('name','weapon').replace(' ','_')}.png"
+                pygame.image.save(surf, fname)
+                path = os.path.abspath(fname)
+            except Exception as e:
+                path = f"save_failed: {e}"
+        results.append({'prompt': cur_prompt, 'has_image': has_image, 'size': size, 'path': path, 'bg_removed': bg_removed, 'bg_has_alpha': bg_has_alpha, 'data': weapon_data})
+
+    ai.set_weapon_spawned_callback(_cb)
+
+    print('HACKCLUB_API_KEY set:', bool(os.environ.get('HACKCLUB_API_KEY')))
+    print('REMOVE_BG_API_KEY set:', bool(os.environ.get('REMOVE_BG_API_KEY')))
+
+    for i, p in enumerate(prompts):
+        cur_prompt = p
+        print(f"\nForging prompt ({i+1}/{len(prompts)}): {p}")
+        ai.forge_weapon(p, i)
+
+    print('\nResults:')
+    for r in results:
+        print(f"Prompt: {r['prompt']}, has_image: {r['has_image']}, size: {r['size']}, saved: {r['path']}, bg_removed: {r['bg_removed']}, bg_has_alpha: {r['bg_has_alpha']}")
+
+    pygame.quit()
+    # exit after test
+    sys.exit(0)
+
+
 def main():
     """Main entry point."""
     pygame.init()
-
+    # CLI test mode: run AI test and exit
+    if '--test-ai' in sys.argv:
+        run_ai_test_mode()
     # Create resizable window
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
     pygame.display.set_caption("PROMPT WARS - Retro Edition")
