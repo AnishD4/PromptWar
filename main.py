@@ -187,7 +187,15 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
     wait_seconds = 20.0
     wait_start = pygame.time.get_ticks() / 1000.0
     num_players = len(game_manager.players)
-    ui.add_notification('Waiting for players to forge weapons...', 5.0, (0, 255, 255))
+    ui.add_notification('Type your weapon and press ENTER to forge!', 5.0, (0, 255, 255))
+
+    # In multiplayer, each player only needs to forge their own weapon
+    # In single player, we need both players to forge
+    if is_multiplayer:
+        players_to_forge = {local_player_id}  # Only local player needs to forge
+    else:
+        players_to_forge = set(range(num_players))  # All players need to forge
+
     # Simple blocking wait loop that still processes UI events so players can type prompts
     waiting = True
     while waiting:
@@ -199,29 +207,56 @@ def run_game(room_info=None, audio_manager=None, is_host=False, network_client=N
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return "QUIT"
-            # allow UI to handle input events (forge)
-            ui.handle_event(event, 0)
+            # Pass the correct player_id for forging
+            ui.handle_event(event, local_player_id)
 
         ui.update(dt)
 
-        # Draw a waiting screen
+        # Draw a waiting screen with weapon input
         screen.blit(background, (0, 0))
         game_manager.draw_players(screen)
-        ui.draw(screen)
-        # draw countdown
+        ui.draw(screen, show_weapon_input=True)  # Show weapon input during forging phase
+
+        # Draw countdown
         countdown_text = ui.small_font.render(f"Forge weapons: {int(remaining)}s", True, (255, 200, 0))
         screen.blit(countdown_text, (SCREEN_WIDTH // 2 - 80, 20))
+
+        # Show which player is forging
+        if is_multiplayer:
+            forge_info = f"YOU ARE P{local_player_id + 1} - FORGE YOUR WEAPON!"
+        else:
+            forge_info = "BOTH PLAYERS: FORGE YOUR WEAPONS!"
+        forge_text = ui.font.render(forge_info, True, (0, 255, 0))
+        forge_rect = forge_text.get_rect(center=(SCREEN_WIDTH // 2, 100))
+        screen.blit(forge_text, forge_rect)
+
         pygame.display.flip()
 
-        # Check if all players forged
-        if len(forged_players) >= num_players:
-            waiting = False
-            break
+        # Check if local player has forged (multiplayer) or all players forged (single player)
+        if is_multiplayer:
+            if local_player_id in forged_players:
+                ui.add_notification('Weapon forged! Waiting for opponent...', 3.0, (0, 255, 0))
+                waiting = False
+                break
+        else:
+            if len(forged_players) >= num_players:
+                waiting = False
+                break
 
         if remaining <= 0.0:
-            ui.add_notification('Timeout: not all players forged weapons. Closing...', 3.0, (255, 0, 0))
-            pygame.time.delay(1500)
-            return "QUIT"
+            # Timeout - give default weapons if not forged
+            if is_multiplayer and local_player_id not in forged_players:
+                ui.add_notification('Timeout: Using default weapon!', 3.0, (255, 165, 0))
+                # Create a default weapon for the player
+                default_weapon = {'name': 'Basic Sword', 'damage': 10, 'speed': 1.0}
+                on_weapon_spawned(default_weapon, local_player_id)
+            elif not is_multiplayer:
+                for pid in range(num_players):
+                    if pid not in forged_players:
+                        default_weapon = {'name': 'Basic Sword', 'damage': 10, 'speed': 1.0}
+                        on_weapon_spawned(default_weapon, pid)
+            waiting = False
+            break
 
     # Start the round once all players have forged
     game_manager.start_round()

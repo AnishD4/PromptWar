@@ -52,6 +52,12 @@ class UI:
         # Callbacks (not used in melee-only mode)
         self.forge_weapon_callback = None
         
+        # Weapon input fields for forging
+        self.input_text = ""
+        self.input_active = False
+        self.input_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT - 80, 300, 40)
+        self.forge_button_rect = pygame.Rect(SCREEN_WIDTH // 2 + 110, SCREEN_HEIGHT - 80, 100, 40)
+
         # Animation effects
         self.pulse_time = 0
         self.scan_line_offset = 0
@@ -145,9 +151,6 @@ class UI:
                     self.show_banner = False
 
     def handle_event(self, event, current_player_id=0):
-        """Handle input events for UI elements (disabled in melee-only mode)."""
-        # No input handling needed - all prompts are before rounds
-        return False
         """Handle input events for UI elements."""
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.input_rect.collidepoint(event.pos):
@@ -186,7 +189,7 @@ class UI:
                 cooldown = int(self.forge_cooldowns[player_id]) + 1
                 self.add_notification(f"COOLDOWN: {cooldown}S!", 1.5, self.retro_orange)
 
-    def draw(self, screen):
+    def draw(self, screen, show_weapon_input=False):
         """Draw all UI elements with retro arcade style."""
         self.screen = screen
         
@@ -194,7 +197,8 @@ class UI:
         self._draw_retro_banner()
         self._draw_retro_health_bars()
         self._draw_retro_timer()
-        # self._draw_retro_weapon_input()  # Not needed in melee-only mode
+        if show_weapon_input:
+            self._draw_retro_weapon_input()
         self._draw_retro_notifications()
         self._draw_retro_game_info()
         self._draw_crt_effect()
